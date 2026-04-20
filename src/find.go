@@ -1,0 +1,117 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+)
+
+const findAPIURL = "https://skills.sh/api/search"
+
+type FindSkillResult struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Source      string `json:"source"`
+	Stars       int    `json:"stars,omitempty"`
+	Owner       string `json:"owner,omitempty"`
+	Repo        string `json:"repo,omitempty"`
+}
+
+func runFind(args []string) {
+	query := ""
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			query = a
+			break
+		}
+	}
+
+	spin := NewSpinner("Searching skills...")
+	results, err := fetchFindResults(query)
+	spin.Stop("")
+
+	if err != nil || len(results) == 0 {
+		if query != "" {
+			fmt.Printf("%sNo skills found for \"%s\"%s\n", ansiDim, query, ansiReset)
+		} else {
+			fmt.Printf("%sNo skills found.%s\n", ansiDim, ansiReset)
+		}
+		return
+	}
+
+	// Build options
+	options := make([]UIOption, len(results))
+	for i, r := range results {
+		hint := r.Source
+		if r.Description != "" {
+			hint = r.Description
+		}
+		if r.Stars > 0 {
+			hint = fmt.Sprintf("%s ★%d", hint, r.Stars)
+		}
+		options[i] = UIOption{Label: r.Name, Value: r.Source, Hint: hint}
+	}
+
+	indices, ok := uiMultiselect("Select skills to install", options, false, nil, nil)
+	if !ok || len(indices) == 0 {
+		return
+	}
+
+	fmt.Println()
+
+	// Install each selected skill
+	for _, i := range indices {
+		r := results[i]
+		src := r.Source
+		if src == "" && r.Owner != "" && r.Repo != "" {
+			src = r.Owner + "/" + r.Repo
+		}
+		if src == "" {
+			continue
+		}
+		fmt.Printf("%sAdding %s%s%s...\n", ansiDim, ansiText, r.Name, ansiReset)
+		parsed := parseSource(src)
+		skillFilter := ""
+		if r.Name != "" {
+			skillFilter = r.Name
+		}
+		_ = skillFilter
+
+		opts := AddOptions{Yes: false}
+		runAdd(src, opts)
+		_ = parsed
+	}
+}
+
+func fetchFindResults(query string) ([]FindSkillResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	url := findAPIURL
+	if query != "" {
+		url += "?q=" + query
+	}
+
+	body, status, err := httpGetText(ctx, url)
+	if err != nil || status != 200 {
+		return nil, fmt.Errorf("search failed: status %d", status)
+	}
+
+	var results []FindSkillResult
+	if err := json.Unmarshal([]byte(body), &results); err != nil {
+		// Try wrapped format
+		var wrapped struct {
+			Results []FindSkillResult `json:"results"`
+		}
+		if err2 := json.Unmarshal([]byte(body), &wrapped); err2 == nil {
+			return wrapped.Results, nil
+		}
+		return nil, err
+	}
+
+	_ = os.Stderr
+	return results, nil
+}
