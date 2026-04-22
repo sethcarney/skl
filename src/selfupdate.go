@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -171,9 +172,18 @@ func runSelfUpdate(currentVersion string) {
 		batchPath := filepath.Join(os.TempDir(), "skl-update.bat")
 		batchContent := fmt.Sprintf("@echo off\r\ntimeout /t 1 /nobreak > NUL\r\nmove /y \"%s\" \"%s\" > NUL\r\ndel \"%%~f0\"\r\n",
 			tmpPath, execPath)
-		os.WriteFile(batchPath, []byte(batchContent), 0644)
-		fmt.Printf("%sDownloaded %s to:%s %s\n", ansiText, latestVersion, ansiReset, tmpPath)
-		fmt.Printf("%sTo apply the update, run after exiting this process:%s\n", ansiDim, ansiReset)
-		fmt.Printf("  %s%s%s\n", ansiText, batchPath, ansiReset)
+		if err := os.WriteFile(batchPath, []byte(batchContent), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to write update script: %v\n", err)
+			os.Exit(1)
+		}
+		if err := exec.Command("cmd", "/c", "start", "/b", "", batchPath).Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to launch update script: %v\n", err)
+			fmt.Printf("%sTo apply the update manually, run:%s\n  %s%s%s\n",
+				ansiDim, ansiReset, ansiText, batchPath, ansiReset)
+			return
+		}
+		fmt.Printf("%sUpdated to %s successfully.%s\n", ansiText, latestVersion, ansiReset)
+		fmt.Printf("%sApplying update as this process exits...%s\n", ansiDim, ansiReset)
+		os.Exit(0)
 	}
 }
