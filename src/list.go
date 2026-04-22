@@ -45,7 +45,7 @@ func runList(args []string) {
 			fmt.Println("[]")
 		} else {
 			fmt.Printf("%sNo skills installed.%s\n\n", ansiDim, ansiReset)
-			fmt.Printf("Add your first skill with %sskills add <package>%s\n", ansiText, ansiReset)
+			fmt.Printf("Add your first skill with %sskl add <package>%s\n", ansiText, ansiReset)
 		}
 		return
 	}

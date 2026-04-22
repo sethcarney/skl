@@ -20,12 +20,12 @@ const (
 )
 
 var logoLines = []string{
-	"███████╗██╗  ██╗██╗██╗     ██╗     ███████╗",
-	"██╔════╝██║ ██╔╝██║██║     ██║     ██╔════╝",
-	"███████╗█████╔╝ ██║██║     ██║     ███████╗",
-	"╚════██║██╔═██╗ ██║██║     ██║     ╚════██║",
-	"███████║██║  ██╗██║███████╗███████╗███████║",
-	"╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚══════╝",
+	"███████╗██╗  ██╗██╗     ",
+	"██╔════╝██║ ██╔╝██║     ",
+	"███████╗█████╔╝ ██║     ",
+	"╚════██║██╔═██╗ ██║     ",
+	"███████║██║  ██╗███████╗",
+	"╚══════╝╚═╝  ╚═╝╚══════╝",
 }
 
 var grays = []string{
@@ -47,28 +47,29 @@ func showLogo() {
 func showBanner() {
 	showLogo()
 	fmt.Println()
-	fmt.Printf("%sThe open agent skills ecosystem%s\n", ansiDim, ansiReset)
+	fmt.Printf("%sThe agent skill management CLI%s\n", ansiDim, ansiReset)
+	fmt.Printf("%sNo telemetry. Fully open source.%s\n", ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("  %s$%s %sskills add %s<package>%s        %sAdd a new skill%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskills remove%s               %sRemove installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskills list%s                 %sList installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskills find %s[query]%s         %sSearch for skills%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl add %s<package>%s           %sAdd a new skill%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl remove%s                  %sRemove installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl list%s                    %sList installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl find %s[query]%s            %sSearch for skills%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("  %s$%s %sskills update%s               %sUpdate installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl update%s                  %sUpdate installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("  %s$%s %sskills experimental_install%s %sRestore from skills-lock.json%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskills init %s[name]%s          %sCreate a new skill%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskills experimental_sync%s    %sSync skills from node_modules%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl experimental_install%s    %sRestore from skills-lock.json%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl init %s[name]%s             %sCreate a new skill%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %s$%s %sskl experimental_sync%s       %sSync skills from node_modules%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("%stry:%s skills add vercel-labs/agent-skills\n", ansiDim, ansiReset)
+	fmt.Printf("%stry:%s skl add vercel-labs/agent-skills\n", ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("Discover more skills at %shttps://skills.sh/%s\n", ansiText, ansiReset)
+	fmt.Printf("Discover more skills at %shttps://skl.sh/%s\n", ansiText, ansiReset)
 	fmt.Println()
 }
 
 func showHelp() {
 	fmt.Printf(`
-%sUsage:%s skills <command> [options]
+%sUsage:%s skl <command> [options]
 
 %sManage Skills:%s
   add <package>        Add a skill package (alias: a, install, i)
@@ -124,16 +125,16 @@ func showHelp() {
   --version, -v     Show version number
 
 %sExamples:%s
-  %s$%s skills add vercel-labs/agent-skills
-  %s$%s skills add vercel-labs/agent-skills -g
-  %s$%s skills add vercel-labs/agent-skills --agent claude-code cursor
-  %s$%s skills remove
-  %s$%s skills list
-  %s$%s skills ls -g
-  %s$%s skills find typescript
-  %s$%s skills update
+  %s$%s skl add vercel-labs/agent-skills
+  %s$%s skl add vercel-labs/agent-skills -g
+  %s$%s skl add vercel-labs/agent-skills --agent claude-code cursor
+  %s$%s skl remove
+  %s$%s skl list
+  %s$%s skl ls -g
+  %s$%s skl find typescript
+  %s$%s skl update
 
-Discover more skills at %shttps://skills.sh/%s
+Discover more skills at %shttps://skl.sh/%s
 `,
 		ansiBold, ansiReset,
 		ansiBold, ansiReset,
@@ -230,9 +231,9 @@ Describe when this skill should be used.
 	fmt.Printf("  2. Update the %sname%s and %sdescription%s in the frontmatter\n", ansiText, ansiReset, ansiText, ansiReset)
 	fmt.Println()
 	fmt.Printf("%sPublishing:%s\n", ansiDim, ansiReset)
-	fmt.Printf("  %sGitHub:%s  Push to a repo, then %sskills add <owner>/<repo>%s\n", ansiDim, ansiReset, ansiText, ansiReset)
+	fmt.Printf("  %sGitHub:%s  Push to a repo, then %sskl add <owner>/<repo>%s\n", ansiDim, ansiReset, ansiText, ansiReset)
 	fmt.Println()
-	fmt.Printf("Browse existing skills for inspiration at %shttps://skills.sh/%s\n", ansiText, ansiReset)
+	fmt.Printf("Browse existing skills for inspiration at %shttps://skl.sh/%s\n", ansiText, ansiReset)
 	fmt.Println()
 }
 
@@ -297,14 +298,14 @@ func main() {
 
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
-		fmt.Printf("Run %sskills --help%s for usage.\n", ansiBold, ansiReset)
+		fmt.Printf("Run %sskl --help%s for usage.\n", ansiBold, ansiReset)
 		os.Exit(1)
 	}
 }
 
 func showRemoveHelp() {
 	fmt.Printf(`
-%sUsage:%s skills remove [skills...] [options]
+%sUsage:%s skl remove [skills...] [options]
 
 %sDescription:%s
   Remove installed skills from agents. If no skill names are provided,
@@ -321,13 +322,13 @@ func showRemoveHelp() {
   --all              Shorthand for --skill '*' --agent '*' -y
 
 %sExamples:%s
-  %s$%s skills remove                           %s# interactive selection%s
-  %s$%s skills remove my-skill                  %s# remove specific skill%s
-  %s$%s skills remove skill1 skill2 -y          %s# remove multiple skills%s
-  %s$%s skills remove --global my-skill         %s# remove from global scope%s
-  %s$%s skills remove --all                     %s# remove all skills%s
+  %s$%s skl remove                           %s# interactive selection%s
+  %s$%s skl remove my-skill                  %s# remove specific skill%s
+  %s$%s skl remove skill1 skill2 -y          %s# remove multiple skills%s
+  %s$%s skl remove --global my-skill         %s# remove from global scope%s
+  %s$%s skl remove --all                     %s# remove all skills%s
 
-Discover more skills at %shttps://skills.sh/%s
+Discover more skills at %shttps://skl.sh/%s
 `,
 		ansiBold, ansiReset,
 		ansiBold, ansiReset,

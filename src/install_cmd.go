@@ -21,7 +21,7 @@ func runInstallFromLock(args []string) {
 
 	if len(lock.Skills) == 0 {
 		fmt.Printf("\n%sNo skills in skills-lock.json.%s\n\n", ansiDim, ansiReset)
-		fmt.Printf("Add skills with %sskills add <package>%s\n\n", ansiText, ansiReset)
+		fmt.Printf("Add skills with %sskl add <package>%s\n\n", ansiText, ansiReset)
 		return
 	}
 

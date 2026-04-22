@@ -77,10 +77,10 @@ func runAdd(sourceInput string, opts AddOptions) {
 
 	if sourceInput == "" {
 		fmt.Fprintf(os.Stderr, "%sError:%s Please provide a package source.\n\n", ansiText, ansiReset)
-		fmt.Printf("  %s$%s skills add <package>\n\n", ansiDim, ansiReset)
+		fmt.Printf("  %s$%s skl add <package>\n\n", ansiDim, ansiReset)
 		fmt.Printf("  %sExamples:%s\n", ansiDim, ansiReset)
-		fmt.Printf("    skills add vercel-labs/agent-skills\n")
-		fmt.Printf("    skills add https://github.com/owner/repo\n")
+		fmt.Printf("    skl add vercel-labs/agent-skills\n")
+		fmt.Printf("    skl add https://github.com/owner/repo\n")
 		os.Exit(1)
 	}
 
@@ -855,7 +855,7 @@ func maybeShowFindPrompt(cwd string) {
 	if isPromptDismissed("findSkillsPrompt") {
 		return
 	}
-	fmt.Printf("%sTip:%s Run %sskills find%s to discover more skills.\n", ansiDim, ansiReset, ansiText, ansiReset)
+	fmt.Printf("%sTip:%s Run %sskl find%s to discover more skills.\n", ansiDim, ansiReset, ansiText, ansiReset)
 	_ = dismissPrompt("findSkillsPrompt")
 }
 
