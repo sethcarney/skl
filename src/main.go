@@ -6,64 +6,43 @@ import (
 	"path/filepath"
 )
 
-const Version = "1.8.3"
+const Version = "0.0.1"
 
 const (
 	ansiReset  = "\x1b[0m"
 	ansiBold   = "\x1b[1m"
-	ansiDim    = "\x1b[38;5;102m"
-	ansiText   = "\x1b[38;5;145m"
+	ansiDim    = "\x1b[38;5;243m"
+	ansiText   = "\x1b[38;5;159m"
 	ansiCyan   = "\x1b[36m"
 	ansiYellow = "\x1b[33m"
 	ansiGreen  = "\x1b[32m"
 	ansiRed    = "\x1b[31m"
 )
 
-var logoLines = []string{
-	"███████╗██╗  ██╗██╗     ",
-	"██╔════╝██║ ██╔╝██║     ",
-	"███████╗█████╔╝ ██║     ",
-	"╚════██║██╔═██╗ ██║     ",
-	"███████║██║  ██╗███████╗",
-	"╚══════╝╚═╝  ╚═╝╚══════╝",
-}
-
-var grays = []string{
-	"\x1b[38;5;250m",
-	"\x1b[38;5;248m",
-	"\x1b[38;5;245m",
-	"\x1b[38;5;243m",
-	"\x1b[38;5;240m",
-	"\x1b[38;5;238m",
-}
-
 func showLogo() {
-	fmt.Println()
-	for i, line := range logoLines {
-		fmt.Printf("%s%s%s\n", grays[i], line, ansiReset)
-	}
+	fmt.Printf("\n%s%sskl%s %s%s%s\n\n", ansiBold, ansiText, ansiReset, ansiDim, Version, ansiReset)
 }
 
 func showBanner() {
-	showLogo()
 	fmt.Println()
-	fmt.Printf("%sThe agent skill management CLI%s\n", ansiDim, ansiReset)
-	fmt.Printf("%sNo telemetry. Fully open source.%s\n", ansiDim, ansiReset)
+	fmt.Printf("%s%sskl%s\n", ansiBold, ansiText, ansiReset)
+	fmt.Printf("%sThe agent skill management CLI. No telemetry · Fully open source. (%s)%s\n", ansiDim, Version, ansiReset)
 	fmt.Println()
-	fmt.Printf("  %s$%s %sskl add %s<package>%s           %sAdd a new skill%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskl remove%s                  %sRemove installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskl list%s                    %sList installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskl find %s[query]%s            %sSearch for skills%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("%sUsage:%s skl %s<command>%s %s[...flags] [...args]%s\n", ansiBold, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("  %s$%s %sskl update%s                  %sUpdate installed skills%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("%sCommands:%s\n", ansiBold, ansiReset)
+	fmt.Printf("  %sadd%s       %s<package>%s           Add a skill from GitHub or URL\n", ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %sremove%s    %s[skills]%s            Remove installed skills\n", ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %slist%s                          List installed skills\n", ansiText, ansiReset)
+	fmt.Printf("  %sfind%s      %s[query]%s             Search the registry\n", ansiText, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("  %s$%s %sskl experimental_install%s    %sRestore from skills-lock.json%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskl init %s[name]%s             %sCreate a new skill%s\n", ansiDim, ansiReset, ansiText, ansiDim, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %s$%s %sskl experimental_sync%s       %sSync skills from node_modules%s\n", ansiDim, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
+	fmt.Printf("  %supdate%s                        Update to latest versions\n", ansiText, ansiReset)
 	fmt.Println()
-	fmt.Printf("%stry:%s skl add vercel-labs/agent-skills\n", ansiDim, ansiReset)
+	fmt.Printf("  %sinit%s      %s[name]%s              Scaffold a new skill\n", ansiText, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("Discover more skills at %shttps://skl.sh/%s\n", ansiText, ansiReset)
+	fmt.Printf("  %s<command> --help%s              %sPrint help text for a command.%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
+	fmt.Println()
+	fmt.Printf("%sLearn more about skl:%s            %shttps://skl.sh%s\n", ansiDim, ansiReset, ansiText, ansiReset)
 	fmt.Println()
 }
 

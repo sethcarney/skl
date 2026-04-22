@@ -1,4 +1,4 @@
-module github.com/sethcarney/skills
+module github.com/sethcarney/skl
 
 go 1.21
 

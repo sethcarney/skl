@@ -1,7 +1,0 @@
-## Changelog
-
-${CHANGELOG}
-
-## Contributors
-
-${CONTRIBUTORS}

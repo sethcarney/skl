@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const updateRepo = "sethcarney/skills"
+const updateRepo = "sethcarney/skl"
 const releasesAPI = "https://api.github.com/repos/" + updateRepo + "/releases/latest"
 
 type githubAsset struct {
@@ -31,20 +31,20 @@ func getBinaryAssetName() string {
 	case "linux":
 		switch runtime.GOARCH {
 		case "amd64":
-			return "skills-linux-x64"
+			return "skl-linux-x64"
 		case "arm64":
-			return "skills-linux-arm64"
+			return "skl-linux-arm64"
 		}
 	case "darwin":
 		switch runtime.GOARCH {
 		case "amd64":
-			return "skills-macos-x64"
+			return "skl-macos-x64"
 		case "arm64":
-			return "skills-macos-arm64"
+			return "skl-macos-arm64"
 		}
 	case "windows":
 		if runtime.GOARCH == "amd64" {
-			return "skills-windows-x64.exe"
+			return "skl-windows-x64.exe"
 		}
 	}
 	return ""
@@ -77,7 +77,7 @@ func runSelfUpdate(currentVersion string) {
 	fmt.Printf("%sChecking for updates...%s\n", ansiDim, ansiReset)
 
 	req, _ := http.NewRequest("GET", releasesAPI, nil)
-	req.Header.Set("User-Agent", "skills-cli/"+currentVersion)
+	req.Header.Set("User-Agent", "skl-cli/"+currentVersion)
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to check for updates: %v\n", err)
@@ -141,7 +141,7 @@ func runSelfUpdate(currentVersion string) {
 	}
 
 	dlBody, _ := io.ReadAll(dlResp.Body)
-	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("skills-update-%d", time.Now().UnixNano()))
+	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("skl-update-%d", time.Now().UnixNano()))
 
 	if err := os.WriteFile(tmpPath, dlBody, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write temp file: %v\n", err)
@@ -165,10 +165,10 @@ func runSelfUpdate(currentVersion string) {
 			os.Remove(tmpPath)
 		}
 		fmt.Printf("%sUpdated to %s successfully.%s\n", ansiText, latestVersion, ansiReset)
-		fmt.Printf("%sRestart your shell or run %sskills --version%s%s to confirm.%s\n",
+		fmt.Printf("%sRestart your shell or run %sskl --version%s%s to confirm.%s\n",
 			ansiDim, ansiText, ansiDim, ansiReset, ansiReset)
 	} else {
-		batchPath := filepath.Join(os.TempDir(), "skills-update.bat")
+		batchPath := filepath.Join(os.TempDir(), "skl-update.bat")
 		batchContent := fmt.Sprintf("@echo off\r\ntimeout /t 1 /nobreak > NUL\r\nmove /y \"%s\" \"%s\" > NUL\r\ndel \"%%~f0\"\r\n",
 			tmpPath, execPath)
 		os.WriteFile(batchPath, []byte(batchContent), 0644)
