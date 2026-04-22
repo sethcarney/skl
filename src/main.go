@@ -36,7 +36,8 @@ func showBanner() {
 	fmt.Printf("  %slist%s                          List installed skills\n", ansiText, ansiReset)
 	fmt.Printf("  %sfind%s      %s[query]%s             Search the registry\n", ansiText, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
-	fmt.Printf("  %supdate%s                        Update to latest versions\n", ansiText, ansiReset)
+	fmt.Printf("  %supdate%s                        Update installed skills\n", ansiText, ansiReset)
+	fmt.Printf("  %supgrade%s                       Upgrade the skl CLI binary\n", ansiText, ansiReset)
 	fmt.Println()
 	fmt.Printf("  %sinit%s      %s[name]%s              Scaffold a new skill\n", ansiText, ansiReset, ansiDim, ansiReset)
 	fmt.Println()
@@ -59,8 +60,8 @@ func showHelp() {
   find [query]         Search for skills interactively (alias: search, f, s)
 
 %sUpdates:%s
-  update [skills...]   Update skills to latest versions (alias: upgrade, check)
-  update-cli           Check for CLI updates and self-update the binary
+  update [skills...]   Update installed skills (alias: check)
+  upgrade              Upgrade the skl CLI binary (alias: update-cli, self-update)
 
 %sUpdate Options:%s
   -g, --global           Update global skills only
@@ -112,6 +113,7 @@ func showHelp() {
   %s$%s skl ls -g
   %s$%s skl find typescript
   %s$%s skl update
+  %s$%s skl upgrade
 
 Discover more skills at %shttps://skl.sh/%s
 `,
@@ -126,6 +128,7 @@ Discover more skills at %shttps://skl.sh/%s
 		ansiBold, ansiReset,
 		ansiBold, ansiReset,
 		ansiBold, ansiReset,
+		ansiDim, ansiReset,
 		ansiDim, ansiReset,
 		ansiDim, ansiReset,
 		ansiDim, ansiReset,
@@ -263,10 +266,10 @@ func main() {
 	case "list", "ls":
 		runList(rest)
 
-	case "check", "update", "upgrade":
+	case "check", "update":
 		runUpdate(rest)
 
-	case "update-cli", "self-update", "upgrade-cli":
+	case "upgrade", "update-cli", "self-update":
 		runSelfUpdate(Version)
 
 	case "--help", "-h", "help":

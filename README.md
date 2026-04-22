@@ -31,7 +31,8 @@ skl add <package>     Add a skill from GitHub or URL
 skl remove            Remove installed skills
 skl list              List installed skills
 skl find [query]      Search the registry
-skl update            Update to latest versions
+skl update            Update installed skills
+skl upgrade           Upgrade the skl CLI binary
 ```
 
 Run `skl --help` for the full command reference.
