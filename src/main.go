@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-const Version = "0.0.4"
+const Version = "0.0.5"
 
 const (
 	ansiReset  = "\x1b[0m"

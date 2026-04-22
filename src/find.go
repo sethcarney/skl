@@ -29,16 +29,21 @@ func runFind(args []string) {
 		}
 	}
 
+	if query == "" {
+		fmt.Printf("%sUsage:%s skl find %s<query>%s\n", ansiBold, ansiReset, ansiDim, ansiReset)
+		return
+	}
+
 	spin := NewSpinner("Searching skills...")
 	results, err := fetchFindResults(query)
 	spin.Stop("")
 
-	if err != nil || len(results) == 0 {
-		if query != "" {
-			fmt.Printf("%sNo skills found for \"%s\"%s\n", ansiDim, query, ansiReset)
-		} else {
-			fmt.Printf("%sNo skills found.%s\n", ansiDim, ansiReset)
-		}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Search failed: %v\n", err)
+		return
+	}
+	if len(results) == 0 {
+		fmt.Printf("%sNo skills found for \"%s\"%s\n", ansiDim, query, ansiReset)
 		return
 	}
 
@@ -100,17 +105,13 @@ func fetchFindResults(query string) ([]FindSkillResult, error) {
 		return nil, fmt.Errorf("search failed: status %d", status)
 	}
 
-	var results []FindSkillResult
-	if err := json.Unmarshal([]byte(body), &results); err != nil {
-		// Try wrapped format
-		var wrapped struct {
-			Results []FindSkillResult `json:"results"`
-		}
-		if err2 := json.Unmarshal([]byte(body), &wrapped); err2 == nil {
-			return wrapped.Results, nil
-		}
+	var wrapped struct {
+		Skills []FindSkillResult `json:"skills"`
+	}
+	if err := json.Unmarshal([]byte(body), &wrapped); err != nil {
 		return nil, err
 	}
+	results := wrapped.Skills
 
 	_ = os.Stderr
 	return results, nil
