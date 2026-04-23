@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -17,6 +18,10 @@ const (
 	ansiShowCursor = "\033[?25h"
 	ansiCR        = "\r"
 )
+
+// stdinFd caches the stdin file descriptor once so we never call Fd() repeatedly
+// (each call sets the fd to blocking mode in Go's runtime scheduler).
+var stdinFd = int(os.Stdin.Fd())
 
 // ─── Log helpers ───────────────────────────────────────────────────────────────
 
@@ -134,47 +139,72 @@ func after(ms int) <-chan struct{} {
 // ─── Raw terminal helpers ───────────────────────────────────────────────────────
 
 // readKey reads a single keypress from stdin.
+//
+// The terminal MUST already be in raw mode when this is called (raw mode is
+// managed by the calling menu function, not here).  Reading in raw mode the
+// whole time prevents the TTY line-discipline from echoing buffered escape
+// bytes to stdout while clear/redraw output is in flight, which is what caused
+// the "entire menu reprints / scrolls to bottom" symptom.
+//
+// We read one byte at a time and use a non-blocking peek for the bytes that
+// follow an ESC, letting us distinguish a lone ESC keypress from an arrow-key
+// escape sequence without any fixed-size buffer fragility.
+//
 // Returns (key string, ok bool). key is one of: "up", "down", "left", "right",
 // "enter", "space", "backspace", "esc", printable char, or "".
 func readKey() (string, bool) {
-	fd := int(os.Stdin.Fd())
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return "", false
-	}
-	defer term.Restore(fd, oldState)
-
-	buf := make([]byte, 4)
-	n, err := os.Stdin.Read(buf)
-	if err != nil || n == 0 {
+	b := make([]byte, 1)
+	if _, err := os.Stdin.Read(b); err != nil {
 		return "", false
 	}
 
-	b := buf[:n]
-	switch {
-	case n == 1 && b[0] == 13: // Enter
+	switch b[0] {
+	case 13: // Enter
 		return "enter", true
-	case n == 1 && b[0] == 32: // Space
+	case 32: // Space
 		return "space", true
-	case n == 1 && (b[0] == 127 || b[0] == 8): // Backspace
+	case 127, 8: // Backspace / Delete
 		return "backspace", true
-	case n == 1 && b[0] == 27: // lone ESC
+	case 3: // Ctrl-C
 		return "esc", true
-	case n == 3 && b[0] == 27 && b[1] == 91: // ESC [
-		switch b[2] {
-		case 65:
+	case 27: // ESC — peek non-blocking to detect escape sequences
+		// Switch to non-blocking so we return immediately if no bytes follow.
+		syscall.SetNonblock(stdinFd, true)
+		peek := make([]byte, 1)
+		n, _ := syscall.Read(stdinFd, peek)
+		syscall.SetNonblock(stdinFd, false)
+
+		if n <= 0 || (peek[0] != '[' && peek[0] != 'O') {
+			// Either a lone ESC key, or an unrecognised sequence prefix.
+			return "esc", true
+		}
+
+		// Read the direction / command byte (blocking — it must follow promptly).
+		cmd := make([]byte, 1)
+		if _, err := os.Stdin.Read(cmd); err != nil {
+			return "esc", true
+		}
+		switch cmd[0] {
+		case 'A':
 			return "up", true
-		case 66:
+		case 'B':
 			return "down", true
-		case 67:
+		case 'C':
 			return "right", true
-		case 68:
+		case 'D':
 			return "left", true
 		}
-	case n == 1 && b[0] >= 32 && b[0] < 127:
-		return string(b[0:1]), true
-	case n == 1 && b[0] == 3: // Ctrl-C
-		return "esc", true
+		// Extended sequence (Home, End, PgUp, F1-F12, …): drain silently so
+		// the stray bytes don't confuse the next readKey call.
+		syscall.SetNonblock(stdinFd, true)
+		drain := make([]byte, 16)
+		syscall.Read(stdinFd, drain) //nolint:errcheck
+		syscall.SetNonblock(stdinFd, false)
+		return "", true
+	}
+
+	if b[0] >= 32 && b[0] < 127 {
+		return string(b[:1]), true
 	}
 	return "", true
 }
@@ -194,10 +224,22 @@ func uiSelect(message string, options []UIOption) (int, bool) {
 		return -1, false
 	}
 
+	// Keep the terminal in raw mode for the entire interaction.  Toggling raw
+	// mode around each individual Read was the root cause of the arrow-key bug:
+	// in the cooked-mode windows between reads the TTY echoed buffered escape
+	// bytes to stdout, corrupting cursor position tracking.
+	oldState, err := term.MakeRaw(stdinFd)
+	if err != nil {
+		return -1, false
+	}
+	defer term.Restore(stdinFd, oldState)
+
 	cursor := 0
 
+	// term.MakeRaw disables OPOST, so \n no longer implies a carriage return.
+	// All print helpers inside this function use \r\n explicitly.
 	printSelect := func() {
-		fmt.Printf("%s%s%s\n", ansiText, message, ansiReset)
+		fmt.Printf("%s%s%s\r\n", ansiText, message, ansiReset)
 		for i, opt := range options {
 			if i == cursor {
 				fmt.Printf("  %s❯%s %s", ansiText, ansiReset, opt.Label)
@@ -207,7 +249,7 @@ func uiSelect(message string, options []UIOption) (int, bool) {
 			if opt.Hint != "" {
 				fmt.Printf("  %s%s%s", ansiDim, opt.Hint, ansiReset)
 			}
-			fmt.Println()
+			fmt.Print("\r\n")
 		}
 	}
 
@@ -240,10 +282,10 @@ func uiSelect(message string, options []UIOption) (int, bool) {
 				cursor++
 			}
 		case "enter":
-			fmt.Printf("%s%s%s  %s%s%s\n", ansiText, message, ansiReset, ansiDim, options[cursor].Label, ansiReset)
+			fmt.Printf("%s%s%s  %s%s%s\r\n", ansiText, message, ansiReset, ansiDim, options[cursor].Label, ansiReset)
 			return cursor, true
 		case "esc":
-			fmt.Printf("%s%s%s\n", ansiDim, message, ansiReset)
+			fmt.Printf("%s%s%s\r\n", ansiDim, message, ansiReset)
 			return -1, false
 		}
 
@@ -274,6 +316,12 @@ func uiMultiselect(message string, options []UIOption, required bool, initialSel
 		return nil, false
 	}
 
+	oldState, err := term.MakeRaw(stdinFd)
+	if err != nil {
+		return nil, false
+	}
+	defer term.Restore(stdinFd, oldState)
+
 	selected := make([]bool, len(options))
 	for _, i := range initialSelected {
 		if i >= 0 && i < len(options) {
@@ -291,7 +339,7 @@ func uiMultiselect(message string, options []UIOption, required bool, initialSel
 	cursor := 0
 
 	printMulti := func() {
-		fmt.Printf("%s%s%s\n", ansiText, message, ansiReset)
+		fmt.Printf("%s%s%s\r\n", ansiText, message, ansiReset)
 		for i, opt := range options {
 			isLocked := lockedSet[i]
 			checkbox := "○"
@@ -309,9 +357,9 @@ func uiMultiselect(message string, options []UIOption, required bool, initialSel
 			if opt.Hint != "" {
 				fmt.Printf("  %s%s%s", ansiDim, opt.Hint, ansiReset)
 			}
-			fmt.Println()
+			fmt.Print("\r\n")
 		}
-		fmt.Printf("%sspace to toggle, enter to confirm%s\n", ansiDim, ansiReset)
+		fmt.Printf("%sspace to toggle, enter to confirm%s\r\n", ansiDim, ansiReset)
 	}
 
 	clearMulti := func(n int) {
@@ -360,11 +408,11 @@ func uiMultiselect(message string, options []UIOption, required bool, initialSel
 				for _, i := range result {
 					labels = append(labels, options[i].Label)
 				}
-				fmt.Printf("%s%s%s  %s%s%s\n", ansiText, message, ansiReset, ansiDim, strings.Join(labels, ", "), ansiReset)
+				fmt.Printf("%s%s%s  %s%s%s\r\n", ansiText, message, ansiReset, ansiDim, strings.Join(labels, ", "), ansiReset)
 				return result, true
 			}
 		case "esc":
-			fmt.Printf("%s%s%s\n", ansiDim, message, ansiReset)
+			fmt.Printf("%s%s%s\r\n", ansiDim, message, ansiReset)
 			return nil, false
 		}
 
@@ -377,6 +425,12 @@ func uiMultiselect(message string, options []UIOption, required bool, initialSel
 // uiSearchMultiselect is a searchable multiselect. locked options are always
 // shown at the top and cannot be deselected (they represent universal agents).
 func uiSearchMultiselect(message string, options []UIOption, locked []UIOption, initialSelected []int) ([]int, bool) {
+	oldState, err := term.MakeRaw(stdinFd)
+	if err != nil {
+		return nil, false
+	}
+	defer term.Restore(stdinFd, oldState)
+
 	query := ""
 	selected := make(map[int]bool) // index into options (non-locked)
 	for _, i := range initialSelected {
@@ -399,25 +453,25 @@ func uiSearchMultiselect(message string, options []UIOption, locked []UIOption, 
 	}
 
 	printSearch := func(filtered []int) {
-		fmt.Printf("%s%s%s\n", ansiText, message, ansiReset)
+		fmt.Printf("%s%s%s\r\n", ansiText, message, ansiReset)
 		// Search box
-		fmt.Printf("  %s[%s%s%s]%s\n", ansiDim, ansiReset, query, ansiDim, ansiReset)
+		fmt.Printf("  %s[%s%s%s]%s\r\n", ansiDim, ansiReset, query, ansiDim, ansiReset)
 
 		// Locked section
 		if showLocked {
-			fmt.Printf("  %s── always included ──%s\n", ansiDim, ansiReset)
+			fmt.Printf("  %s── always included ──%s\r\n", ansiDim, ansiReset)
 			for _, lo := range locked {
 				fmt.Printf("    %s◉%s %s%s%s", ansiDim, ansiReset, ansiDim, lo.Label, ansiReset)
 				if lo.Hint != "" {
 					fmt.Printf("  %s%s%s", ansiDim, lo.Hint, ansiReset)
 				}
-				fmt.Println()
+				fmt.Print("\r\n")
 			}
 		}
 
 		// Filtered options
 		if len(filtered) == 0 {
-			fmt.Printf("  %sno matches%s\n", ansiDim, ansiReset)
+			fmt.Printf("  %sno matches%s\r\n", ansiDim, ansiReset)
 		} else {
 			for idx, fi := range filtered {
 				opt := options[fi]
@@ -433,11 +487,11 @@ func uiSearchMultiselect(message string, options []UIOption, locked []UIOption, 
 				if opt.Hint != "" {
 					fmt.Printf("  %s%s%s", ansiDim, opt.Hint, ansiReset)
 				}
-				fmt.Println()
+				fmt.Print("\r\n")
 			}
 		}
 		hintLine := "type to filter, space to toggle, enter to confirm"
-		fmt.Printf("%s%s%s\n", ansiDim, hintLine, ansiReset)
+		fmt.Printf("%s%s%s\r\n", ansiDim, hintLine, ansiReset)
 	}
 
 	countLines := func(filtered []int) int {
@@ -510,10 +564,10 @@ func uiSearchMultiselect(message string, options []UIOption, locked []UIOption, 
 			for _, lo := range locked {
 				labels = append([]string{lo.Label}, labels...)
 			}
-			fmt.Printf("%s%s%s  %s%s%s\n", ansiText, message, ansiReset, ansiDim, strings.Join(labels, ", "), ansiReset)
+			fmt.Printf("%s%s%s  %s%s%s\r\n", ansiText, message, ansiReset, ansiDim, strings.Join(labels, ", "), ansiReset)
 			return result, true
 		case "esc":
-			fmt.Printf("%s%s%s\n", ansiDim, message, ansiReset)
+			fmt.Printf("%s%s%s\r\n", ansiDim, message, ansiReset)
 			return nil, false
 		default:
 			if len(key) == 1 {
