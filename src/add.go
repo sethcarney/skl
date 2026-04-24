@@ -542,7 +542,7 @@ func discoverSkillsInDir(dir string, fullDepth bool, skillFilter string) []*Skil
 	var skills []*Skill
 	seen := map[string]bool{}
 	for _, skillMd := range allFound {
-		s, err := parseSkillMd(skillMd, false)
+		s, err := parseSkillMd(filepath.Join(skillMd, "SKILL.md"), false)
 		if err != nil || s == nil {
 			continue
 		}
