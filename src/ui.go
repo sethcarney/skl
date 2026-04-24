@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -168,14 +167,9 @@ func readKey() (string, bool) {
 	case 3: // Ctrl-C
 		return "esc", true
 	case 27: // ESC — peek non-blocking to detect escape sequences
-		// Switch to non-blocking so we return immediately if no bytes follow.
-		syscall.SetNonblock(stdinFd, true)
-		peek := make([]byte, 1)
-		n, _ := syscall.Read(stdinFd, peek)
-		syscall.SetNonblock(stdinFd, false)
-
-		if n <= 0 || (peek[0] != '[' && peek[0] != 'O') {
-			// Either a lone ESC key, or an unrecognised sequence prefix.
+		next, ok := peekByte()
+		if !ok || (next != '[' && next != 'O') {
+			// Lone ESC key or unrecognised sequence prefix.
 			return "esc", true
 		}
 
@@ -195,11 +189,12 @@ func readKey() (string, bool) {
 			return "left", true
 		}
 		// Extended sequence (Home, End, PgUp, F1-F12, …): drain silently so
-		// the stray bytes don't confuse the next readKey call.
-		syscall.SetNonblock(stdinFd, true)
-		drain := make([]byte, 16)
-		syscall.Read(stdinFd, drain) //nolint:errcheck
-		syscall.SetNonblock(stdinFd, false)
+		// stray bytes don't confuse the next readKey call.
+		for {
+			if _, ok := peekByte(); !ok {
+				break
+			}
+		}
 		return "", true
 	}
 
