@@ -8,13 +8,7 @@ import (
 
 // experimental_install: restore skills from skills-lock.json
 
-func runInstallFromLock(args []string) {
-	var yes bool
-	for _, a := range args {
-		if a == "--yes" || a == "-y" {
-			yes = true
-		}
-	}
+func runInstallFromLock(yes bool) {
 
 	cwd, _ := os.Getwd()
 	lock := readLocalLock(cwd)

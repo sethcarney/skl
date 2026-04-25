@@ -22,53 +22,6 @@ type AddOptions struct {
 	FullDepth bool
 }
 
-func parseAddOptions(args []string) (string, AddOptions) {
-	var src string
-	var opts AddOptions
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--global" || a == "-g":
-			opts.Global = true
-		case a == "--project" || a == "-p":
-			opts.Project = true
-		case a == "--copy":
-			opts.Copy = true
-		case a == "--list" || a == "-l":
-			opts.ListOnly = true
-		case a == "--yes" || a == "-y":
-			opts.Yes = true
-		case a == "--all":
-			opts.All = true
-		case a == "--full-depth":
-			opts.FullDepth = true
-		case a == "--agent" || a == "-a":
-			i++
-			for i < len(args) && !strings.HasPrefix(args[i], "-") {
-				opts.Agents = append(opts.Agents, args[i])
-				i++
-			}
-			i-- // step back so loop increment doesn't skip
-		case a == "--skill" || a == "-s":
-			i++
-			for i < len(args) && !strings.HasPrefix(args[i], "-") {
-				opts.Skills = append(opts.Skills, args[i])
-				i++
-			}
-			i--
-		default:
-			if !strings.HasPrefix(a, "-") && src == "" {
-				src = a
-			}
-		}
-	}
-	if opts.All {
-		opts.Skills = []string{"*"}
-		opts.Agents = []string{"*"}
-		opts.Yes = true
-	}
-	return src, opts
-}
 
 // ─── Main add command ──────────────────────────────────────────────────────────
 

@@ -15,45 +15,6 @@ type RemoveOptions struct {
 	All     bool
 }
 
-func parseRemoveOptions(args []string) ([]string, RemoveOptions) {
-	var positional []string
-	var opts RemoveOptions
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--global" || a == "-g":
-			opts.Global = true
-		case a == "--yes" || a == "-y":
-			opts.Yes = true
-		case a == "--all":
-			opts.All = true
-		case a == "--agent" || a == "-a":
-			i++
-			for i < len(args) && !strings.HasPrefix(args[i], "-") {
-				opts.Agents = append(opts.Agents, args[i])
-				i++
-			}
-			i--
-		case a == "--skill" || a == "-s":
-			i++
-			for i < len(args) && !strings.HasPrefix(args[i], "-") {
-				opts.Skills = append(opts.Skills, args[i])
-				i++
-			}
-			i--
-		default:
-			if !strings.HasPrefix(a, "-") {
-				positional = append(positional, a)
-			}
-		}
-	}
-	if opts.All {
-		opts.Skills = []string{"*"}
-		opts.Agents = []string{"*"}
-		opts.Yes = true
-	}
-	return positional, opts
-}
 
 func runRemove(positional []string, opts RemoveOptions) {
 	cwd, _ := os.Getwd()
