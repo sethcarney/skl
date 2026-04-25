@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,51 @@ const (
 
 func showLogo() {
 	fmt.Printf("\n%s%sskl%s %s%s%s\n\n", ansiBold, ansiText, ansiReset, ansiDim, Version, ansiReset)
+}
+
+// multiValueFlags are flags that accept multiple space-separated values after a
+// single flag instance (-a claude cursor) in addition to the repeated-flag form
+// (-a claude -a cursor). Both styles are supported.
+var multiValueFlags = map[string]bool{
+	"agent": true, "a": true,
+	"skill": true, "s": true,
+}
+
+// normalizeMultiFlags rewrites space-separated multi-value flags into the
+// repeated-flag form that cobra/pflag expects.
+// e.g. ["-a", "claude", "cursor"] → ["-a", "claude", "-a", "cursor"]
+func normalizeMultiFlags(args []string) []string {
+	result := make([]string, 0, len(args))
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		i++
+		result = append(result, arg)
+
+		var flagName string
+		switch {
+		case strings.HasPrefix(arg, "--") && !strings.Contains(arg, "="):
+			flagName = arg[2:]
+		case len(arg) == 2 && arg[0] == '-' && arg[1] != '-':
+			flagName = string(arg[1])
+		}
+
+		if !multiValueFlags[flagName] {
+			continue
+		}
+		// consume first value
+		if i >= len(args) || strings.HasPrefix(args[i], "-") {
+			continue
+		}
+		result = append(result, args[i])
+		i++
+		// expand extra space-separated values into repeated flag+value pairs
+		for i < len(args) && !strings.HasPrefix(args[i], "-") {
+			result = append(result, arg, args[i])
+			i++
+		}
+	}
+	return result
 }
 
 func main() {
@@ -57,6 +103,8 @@ func main() {
 		buildCompletionCmd(root),
 	)
 
+	root.SetArgs(normalizeMultiFlags(os.Args[1:]))
+
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -74,9 +122,17 @@ func buildAddCmd() *cobra.Command {
 		Aliases: []string{"a", "install", "i"},
 		Long: fmt.Sprintf(`Add a skill package from GitHub, a URL, or a local path.
 
+The --agent (-a) and --skill (-s) flags accept multiple values. You can
+pass them space-separated after the flag or repeat the flag for each value
+— both styles are equivalent:
+
+  skl add owner/repo -a claude-code cursor
+  skl add owner/repo -a claude-code -a cursor
+
 %sExamples:%s
   skl add vercel-labs/agent-skills
   skl add vercel-labs/agent-skills -g
+  skl add vercel-labs/agent-skills -a claude-code cursor
   skl add vercel-labs/agent-skills --agent claude-code --agent cursor
   skl add https://github.com/owner/repo
   skl add ./my-local-skill`, ansiBold, ansiReset),
@@ -122,6 +178,12 @@ func buildRemoveCmd() *cobra.Command {
 		Long: fmt.Sprintf(`Remove installed skills from agents.
 
 If no skill names are provided an interactive selection menu is shown.
+
+The --agent (-a) and --skill (-s) flags accept multiple values — space-
+separated after the flag or repeated:
+
+  skl remove -a claude-code cursor
+  skl remove -a claude-code -a cursor
 
 %sExamples:%s
   skl remove
