@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/cobra"
 )
 
-const Version = "0.0.7"
+const Version = "0.0.8"
 
 const (
 	ansiReset  = "\x1b[0m"
@@ -23,123 +25,334 @@ func showLogo() {
 	fmt.Printf("\n%s%sskl%s %s%s%s\n\n", ansiBold, ansiText, ansiReset, ansiDim, Version, ansiReset)
 }
 
-func showBanner() {
-	fmt.Println()
-	fmt.Printf("%s%sskl%s\n", ansiBold, ansiText, ansiReset)
-	fmt.Printf("%sThe agent skill management CLI. No telemetry · Fully open source. (%s)%s\n", ansiDim, Version, ansiReset)
-	fmt.Println()
-	fmt.Printf("%sUsage:%s skl %s<command>%s %s[...flags] [...args]%s\n", ansiBold, ansiReset, ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Println()
-	fmt.Printf("%sCommands:%s\n", ansiBold, ansiReset)
-	fmt.Printf("  %sadd%s       %s<package>%s           Add a skill from GitHub or URL\n", ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %sremove%s    %s[skills]%s            Remove installed skills\n", ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Printf("  %slist%s                          List installed skills\n", ansiText, ansiReset)
-	fmt.Printf("  %sfind%s      %s[query]%s             Search the registry\n", ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Println()
-	fmt.Printf("  %supdate%s                        Update installed skills\n", ansiText, ansiReset)
-	fmt.Printf("  %supgrade%s                       Upgrade the skl CLI binary\n", ansiText, ansiReset)
-	fmt.Println()
-	fmt.Printf("  %sinit%s      %s[name]%s              Scaffold a new skill\n", ansiText, ansiReset, ansiDim, ansiReset)
-	fmt.Println()
-	fmt.Printf("  %s<command> --help%s              %sPrint help text for a command.%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
-	fmt.Println()
-	//	fmt.Printf("%sLearn more about skl:%s            %shttps://skl.sh%s\n", ansiDim, ansiReset, ansiText, ansiReset)
-	fmt.Println()
+func main() {
+	root := &cobra.Command{
+		Use:           "skl",
+		Short:         "The agent skill management CLI",
+		Long:          fmt.Sprintf("%s%sskl%s — The agent skill management CLI. No telemetry · Fully open source.", ansiBold, ansiText, ansiReset),
+		Version:       Version,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println()
+			fmt.Printf("%s%sskl%s\n", ansiBold, ansiText, ansiReset)
+			fmt.Printf("%sThe agent skill management CLI. No telemetry · Fully open source. (%s)%s\n", ansiDim, Version, ansiReset)
+			fmt.Println()
+			_ = cmd.Help()
+		},
+	}
+
+	root.SetVersionTemplate(fmt.Sprintf("%s%sskl%s %s\n", ansiBold, ansiText, ansiReset, Version))
+
+	root.AddCommand(
+		buildAddCmd(),
+		buildRemoveCmd(),
+		buildListCmd(),
+		buildFindCmd(),
+		buildUpdateCmd(),
+		buildUpgradeCmd(),
+		buildInitCmd(),
+		buildInstallFromLockCmd(),
+		buildSyncCmd(),
+		buildCompletionCmd(root),
+	)
+
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
 
-func showHelp() {
-	fmt.Printf(`
-%sUsage:%s skl <command> [options]
+// ─── add ───────────────────────────────────────────────────────────────────────
 
-%sManage Skills:%s
-  add <package>        Add a skill package (alias: a, install, i)
-                       e.g. vercel-labs/agent-skills
-                            https://github.com/vercel-labs/agent-skills
-  remove [skills]      Remove installed skills (alias: rm, r)
-  list, ls             List installed skills
-  find [query]         Search for skills interactively (alias: search, f, s)
+func buildAddCmd() *cobra.Command {
+	var opts AddOptions
 
-%sUpdates:%s
-  update [skills...]   Update installed skills (alias: check)
-  upgrade              Upgrade the skl CLI binary (alias: update-cli, self-update)
-
-%sUpdate Options:%s
-  -g, --global           Update global skills only
-  -p, --project          Update project skills only
-  -y, --yes              Skip scope prompt
-
-%sProject:%s
-  experimental_install Restore skills from skills-lock.json
-  init [name]          Initialize a skill (creates <name>/SKILL.md or ./SKILL.md)
-  experimental_sync    Sync skills from node_modules into agent directories
-
-%sInstall Options:%s
-  -a, --agent <agents>   Specify agents to install to (skips agent selection prompt)
-  -y, --yes              Skip agent selection prompt
-
-%sAdd Options:%s
-  -p, --project          Force project-scope install
-  -g, --global           Install skill globally (user-level)
-  -a, --agent <agents>   Specify agents to install to (use '*' for all agents)
-  -s, --skill <skills>   Specify skill names to install (use '*' for all skills)
-  -l, --list             List available skills without installing
-  -y, --yes              Skip confirmation prompts
-  --copy                 Copy files instead of symlinking
-  --all                  Shorthand for --skill '*' --agent '*' -y
-  --full-depth           Search all subdirectories
-
-%sRemove Options:%s
-  -g, --global           Remove from global scope
-  -a, --agent <agents>   Remove from specific agents
-  -s, --skill <skills>   Specify skills to remove
-  -y, --yes              Skip confirmation prompts
-  --all                  Shorthand for --skill '*' --agent '*' -y
-
-%sList Options:%s
-  -g, --global           List global skills (default: project)
-  -a, --agent <agents>   Filter by specific agents
-  --json                 Output as JSON
-
-%sOptions:%s
-  --help, -h        Show this help message
-  --version, -v     Show version number
+	cmd := &cobra.Command{
+		Use:     "add <package>",
+		Short:   "Add a skill from GitHub or URL",
+		Aliases: []string{"a", "install", "i"},
+		Long: fmt.Sprintf(`Add a skill package from GitHub, a URL, or a local path.
 
 %sExamples:%s
-  %s$%s skl add vercel-labs/agent-skills
-  %s$%s skl add vercel-labs/agent-skills -g
-  %s$%s skl add vercel-labs/agent-skills --agent claude-code cursor
-  %s$%s skl remove
-  %s$%s skl list
-  %s$%s skl ls -g
-  %s$%s skl find typescript
-  %s$%s skl update
-  %s$%s skl upgrade
+  skl add vercel-labs/agent-skills
+  skl add vercel-labs/agent-skills -g
+  skl add vercel-labs/agent-skills --agent claude-code --agent cursor
+  skl add https://github.com/owner/repo
+  skl add ./my-local-skill`, ansiBold, ansiReset),
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			showLogo()
+			src := ""
+			if len(args) > 0 {
+				src = args[0]
+			}
+			if opts.All {
+				opts.Skills = []string{"*"}
+				opts.Agents = []string{"*"}
+				opts.Yes = true
+			}
+			runAdd(src, opts)
+		},
+	}
 
-Discover more skills at %shttps://skl.sh/%s
-`,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiDim, ansiReset,
-		ansiText, ansiReset,
-	)
+	f := cmd.Flags()
+	f.BoolVarP(&opts.Global, "global", "g", false, "Install skill globally (user-level)")
+	f.BoolVarP(&opts.Project, "project", "p", false, "Force project-scope install")
+	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Agents to install to (repeatable, use '*' for all)")
+	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to install (repeatable, use '*' for all)")
+	f.BoolVarP(&opts.ListOnly, "list", "l", false, "List available skills without installing")
+	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking")
+	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
+
+	return cmd
 }
+
+// ─── remove ────────────────────────────────────────────────────────────────────
+
+func buildRemoveCmd() *cobra.Command {
+	var opts RemoveOptions
+
+	cmd := &cobra.Command{
+		Use:     "remove [skills...]",
+		Short:   "Remove installed skills",
+		Aliases: []string{"rm", "r"},
+		Long: fmt.Sprintf(`Remove installed skills from agents.
+
+If no skill names are provided an interactive selection menu is shown.
+
+%sExamples:%s
+  skl remove
+  skl remove my-skill
+  skl remove skill1 skill2 -y
+  skl remove --global my-skill
+  skl remove --all`, ansiBold, ansiReset),
+		Args: cobra.ArbitraryArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			if opts.All {
+				opts.Skills = []string{"*"}
+				opts.Agents = []string{"*"}
+				opts.Yes = true
+			}
+			runRemove(args, opts)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&opts.Global, "global", "g", false, "Remove from global scope")
+	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Remove from specific agents (repeatable)")
+	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to remove (repeatable)")
+	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+
+	return cmd
+}
+
+// ─── list ──────────────────────────────────────────────────────────────────────
+
+func buildListCmd() *cobra.Command {
+	var globalFlag bool
+	var projectFlag bool
+	var agentFilter []string
+	var jsonMode bool
+
+	cmd := &cobra.Command{
+		Use:     "list",
+		Short:   "List installed skills",
+		Aliases: []string{"ls"},
+		Long: fmt.Sprintf(`List installed skills.
+
+%sExamples:%s
+  skl list
+  skl ls -g
+  skl list --json`, ansiBold, ansiReset),
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			var gFlag *bool
+			if cmd.Flags().Changed("global") {
+				t := true
+				gFlag = &t
+			} else if cmd.Flags().Changed("project") || projectFlag {
+				f := false
+				gFlag = &f
+			}
+			_ = globalFlag
+			runListWithOpts(gFlag, agentFilter, jsonMode)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&globalFlag, "global", "g", false, "List global skills")
+	f.BoolVarP(&projectFlag, "project", "p", false, "List project skills")
+	f.StringArrayVarP(&agentFilter, "agent", "a", nil, "Filter by specific agents")
+	f.BoolVar(&jsonMode, "json", false, "Output as JSON")
+
+	return cmd
+}
+
+// ─── find ──────────────────────────────────────────────────────────────────────
+
+func buildFindCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "find [query]",
+		Short:   "Search the skills registry",
+		Aliases: []string{"search", "f", "s"},
+		Long: fmt.Sprintf(`Search the skills registry and install interactively.
+
+%sExamples:%s
+  skl find typescript
+  skl search git`, ansiBold, ansiReset),
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			showLogo()
+			fmt.Println()
+			runFind(args)
+		},
+	}
+}
+
+// ─── update ────────────────────────────────────────────────────────────────────
+
+func buildUpdateCmd() *cobra.Command {
+	var opts UpdateOptions
+
+	cmd := &cobra.Command{
+		Use:     "update [skills...]",
+		Short:   "Update installed skills",
+		Aliases: []string{"check"},
+		Long: fmt.Sprintf(`Update installed skills to their latest versions.
+
+%sExamples:%s
+  skl update
+  skl update my-skill
+  skl update -g`, ansiBold, ansiReset),
+		Args: cobra.ArbitraryArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			runUpdateWithOpts(args, opts)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&opts.Global, "global", "g", false, "Update global skills only")
+	f.BoolVarP(&opts.Project, "project", "p", false, "Update project skills only")
+	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip scope prompt")
+
+	return cmd
+}
+
+// ─── upgrade ───────────────────────────────────────────────────────────────────
+
+func buildUpgradeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "upgrade",
+		Short:   "Upgrade the skl CLI binary",
+		Aliases: []string{"update-cli", "self-update"},
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			runSelfUpdate(Version)
+		},
+	}
+}
+
+// ─── init ──────────────────────────────────────────────────────────────────────
+
+func buildInitCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init [name]",
+		Short: "Scaffold a new skill",
+		Long: fmt.Sprintf(`Initialize a new skill in the current directory.
+
+Creates <name>/SKILL.md or ./SKILL.md if no name is given.
+
+%sExamples:%s
+  skl init
+  skl init my-skill`, ansiBold, ansiReset),
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			showLogo()
+			fmt.Println()
+			runInitCmd(args)
+		},
+	}
+}
+
+// ─── experimental_install ──────────────────────────────────────────────────────
+
+func buildInstallFromLockCmd() *cobra.Command {
+	var yes bool
+
+	cmd := &cobra.Command{
+		Use:   "experimental_install",
+		Short: "Restore skills from skills-lock.json",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			showLogo()
+			runInstallFromLock(yes)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
+	return cmd
+}
+
+// ─── experimental_sync ─────────────────────────────────────────────────────────
+
+func buildSyncCmd() *cobra.Command {
+	var opts SyncOptions
+
+	cmd := &cobra.Command{
+		Use:   "experimental_sync",
+		Short: "Sync skills from node_modules into agent directories",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			showLogo()
+			runSync(opts)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	return cmd
+}
+
+// ─── completion ────────────────────────────────────────────────────────────────
+
+func buildCompletionCmd(root *cobra.Command) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion script",
+		Long: fmt.Sprintf(`Generate a shell completion script for skl.
+
+%sUsage:%s
+  # Bash
+  source <(skl completion bash)
+
+  # Zsh
+  skl completion zsh > "${fpath[1]}/_skl"
+
+  # Fish
+  skl completion fish | source`, ansiBold, ansiReset),
+		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		DisableFlagsInUseLine: true,
+		Run: func(cmd *cobra.Command, args []string) {
+			switch args[0] {
+			case "bash":
+				_ = root.GenBashCompletion(os.Stdout)
+			case "zsh":
+				_ = root.GenZshCompletion(os.Stdout)
+			case "fish":
+				_ = root.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				_ = root.GenPowerShellCompletionWithDesc(os.Stdout)
+			}
+		},
+	}
+	return cmd
+}
+
+// ─── init command business logic ───────────────────────────────────────────────
 
 func runInitCmd(args []string) {
 	cwd, _ := os.Getwd()
@@ -217,113 +430,6 @@ Describe when this skill should be used.
 	fmt.Println()
 	fmt.Printf("Browse existing skills for inspiration at %shttps://skl.sh/%s\n", ansiText, ansiReset)
 	fmt.Println()
-}
-
-func main() {
-	args := os.Args[1:]
-
-	if len(args) == 0 {
-		showBanner()
-		return
-	}
-
-	command := args[0]
-	rest := args[1:]
-
-	switch command {
-	case "find", "search", "f", "s":
-		showLogo()
-		fmt.Println()
-		runFind(rest)
-
-	case "init":
-		showLogo()
-		fmt.Println()
-		runInitCmd(rest)
-
-	case "experimental_install":
-		showLogo()
-		runInstallFromLock(rest)
-
-	case "i", "install", "a", "add":
-		showLogo()
-		src, opts := parseAddOptions(rest)
-		runAdd(src, opts)
-
-	case "remove", "rm", "r":
-		if contains(rest, "--help") || contains(rest, "-h") {
-			showRemoveHelp()
-			return
-		}
-		skills, opts := parseRemoveOptions(rest)
-		runRemove(skills, opts)
-
-	case "experimental_sync":
-		showLogo()
-		opts := parseSyncOptions(rest)
-		runSync(rest, opts)
-
-	case "list", "ls":
-		runList(rest)
-
-	case "check", "update":
-		runUpdate(rest)
-
-	case "upgrade", "update-cli", "self-update":
-		runSelfUpdate(Version)
-
-	case "--help", "-h", "help":
-		showHelp()
-
-	case "--version", "-v", "version":
-		fmt.Println(Version)
-
-	default:
-		fmt.Printf("Unknown command: %s\n", command)
-		fmt.Printf("Run %sskl --help%s for usage.\n", ansiBold, ansiReset)
-		os.Exit(1)
-	}
-}
-
-func showRemoveHelp() {
-	fmt.Printf(`
-%sUsage:%s skl remove [skills...] [options]
-
-%sDescription:%s
-  Remove installed skills from agents. If no skill names are provided,
-  an interactive selection menu will be shown.
-
-%sArguments:%s
-  skills            Optional skill names to remove (space-separated)
-
-%sOptions:%s
-  -g, --global       Remove from global scope (~/) instead of project scope
-  -a, --agent        Remove from specific agents (use '*' for all agents)
-  -s, --skill        Specify skills to remove (use '*' for all skills)
-  -y, --yes          Skip confirmation prompts
-  --all              Shorthand for --skill '*' --agent '*' -y
-
-%sExamples:%s
-  %s$%s skl remove                           %s# interactive selection%s
-  %s$%s skl remove my-skill                  %s# remove specific skill%s
-  %s$%s skl remove skill1 skill2 -y          %s# remove multiple skills%s
-  %s$%s skl remove --global my-skill         %s# remove from global scope%s
-  %s$%s skl remove --all                     %s# remove all skills%s
-
-Discover more skills at %shttps://skl.sh/%s
-`,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiBold, ansiReset,
-		ansiDim, ansiReset, ansiDim, ansiReset,
-		ansiDim, ansiReset, ansiDim, ansiReset,
-		ansiDim, ansiReset, ansiDim, ansiReset,
-		ansiDim, ansiReset, ansiDim, ansiReset,
-		ansiDim, ansiReset, ansiDim, ansiReset,
-		ansiText, ansiReset,
-	)
 }
 
 func contains(slice []string, s string) bool {

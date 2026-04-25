@@ -8,32 +8,7 @@ import (
 	"strings"
 )
 
-func runList(args []string) {
-	var globalFlag *bool
-	var agentFilter []string
-	jsonMode := false
-
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--global" || a == "-g":
-			t := true
-			globalFlag = &t
-		case a == "--project" || a == "-p":
-			f := false
-			globalFlag = &f
-		case a == "--json":
-			jsonMode = true
-		case a == "--agent" || a == "-a":
-			i++
-			for i < len(args) && !strings.HasPrefix(args[i], "-") {
-				agentFilter = append(agentFilter, args[i])
-				i++
-			}
-			i--
-		}
-	}
-
+func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 	skills, err := listInstalledSkills(globalFlag, agentFilter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

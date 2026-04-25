@@ -11,17 +11,7 @@ type SyncOptions struct {
 	Yes bool
 }
 
-func parseSyncOptions(args []string) SyncOptions {
-	var opts SyncOptions
-	for _, a := range args {
-		if a == "--yes" || a == "-y" {
-			opts.Yes = true
-		}
-	}
-	return opts
-}
-
-func runSync(args []string, opts SyncOptions) {
+func runSync(opts SyncOptions) {
 	cwd, _ := os.Getwd()
 
 	fmt.Printf("\n%sScanning node_modules for skills...%s\n\n", ansiDim, ansiReset)

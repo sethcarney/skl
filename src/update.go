@@ -12,26 +12,7 @@ type UpdateOptions struct {
 	Yes     bool
 }
 
-func runUpdate(args []string) {
-	var opts UpdateOptions
-	var skillFilter []string
-
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--global" || a == "-g":
-			opts.Global = true
-		case a == "--project" || a == "-p":
-			opts.Project = true
-		case a == "--yes" || a == "-y":
-			opts.Yes = true
-		default:
-			if !strings.HasPrefix(a, "-") {
-				skillFilter = append(skillFilter, a)
-			}
-		}
-	}
-
+func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	// Determine scope
 	global := opts.Global
 	project := opts.Project
