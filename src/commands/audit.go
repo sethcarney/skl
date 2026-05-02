@@ -22,16 +22,16 @@ const auditAPIBase = "https://skills.sh/api/v1/skills"
 // ── API types ──────────────────────────────────────────────
 
 type skillsShAuditResponse struct {
-	ID     string            `json:"id"`
-	Source string            `json:"source"`
-	Slug   string            `json:"slug"`
-	Audits []skillsShAudit   `json:"audits"`
+	ID     string          `json:"id"`
+	Source string          `json:"source"`
+	Slug   string          `json:"slug"`
+	Audits []skillsShAudit `json:"audits"`
 }
 
 type skillsShAudit struct {
 	Provider   string   `json:"provider"`
 	Slug       string   `json:"slug"`
-	Status     string   `json:"status"`   // pass / warn / fail
+	Status     string   `json:"status"` // pass / warn / fail
 	Summary    string   `json:"summary"`
 	AuditedAt  string   `json:"auditedAt"`
 	RiskLevel  string   `json:"riskLevel,omitempty"`
@@ -53,9 +53,11 @@ type auditSkillResult struct {
 
 type auditProvider struct {
 	Provider  string `json:"provider"`
+	Slug      string `json:"slug,omitempty"`
 	Status    string `json:"status"`
 	RiskLevel string `json:"riskLevel,omitempty"`
 	Summary   string `json:"summary,omitempty"`
+	AuditedAt string `json:"auditedAt,omitempty"`
 }
 
 // ── Command ────────────────────────────────────────────────
@@ -262,28 +264,52 @@ func fetchSkillAudits(skillID string) []auditProvider {
 
 	url := auditAPIBase + "/audit/" + skillID
 	body, status, err := registry.HttpGetText(ctx, url)
-	if err != nil || status == 404 {
+	if err == nil && status == 200 {
+		var resp skillsShAuditResponse
+		if jsonErr := json.Unmarshal([]byte(body), &resp); jsonErr == nil && len(resp.Audits) > 0 {
+			var providers []auditProvider
+			for _, a := range resp.Audits {
+				providers = append(providers, auditProvider{
+					Provider:  a.Provider,
+					Slug:      a.Slug,
+					Status:    a.Status,
+					RiskLevel: a.RiskLevel,
+					Summary:   a.Summary,
+					AuditedAt: a.AuditedAt,
+				})
+			}
+			return providers
+		}
+	}
+
+	// Fallback: query OSV for GitHub advisories
+	// skillID format is "owner/repo/slug" — we need just "owner/repo"
+	parts := strings.SplitN(skillID, "/", 3)
+	if len(parts) < 2 {
 		return nil
 	}
-	if status != 200 {
+	ownerRepo := parts[0] + "/" + parts[1]
+	osvResult := registry.FetchOSVAdvisories(ownerRepo, 5000)
+	if osvResult == nil || osvResult.Count == 0 {
 		return nil
 	}
 
-	var resp skillsShAuditResponse
-	if err := json.Unmarshal([]byte(body), &resp); err != nil {
-		return nil
+	status2 := "pass"
+	if osvResult.MaxSeverity == registry.OSVHigh || osvResult.MaxSeverity == registry.OSVCritical {
+		status2 = "fail"
+	} else if osvResult.MaxSeverity == registry.OSVMedium || osvResult.MaxSeverity == registry.OSVLow {
+		status2 = "warn"
 	}
-
-	var providers []auditProvider
-	for _, a := range resp.Audits {
-		providers = append(providers, auditProvider{
-			Provider:  a.Provider,
-			Status:    a.Status,
-			RiskLevel: a.RiskLevel,
-			Summary:   a.Summary,
-		})
+	summary := fmt.Sprintf("%d advisory(s) found via OSV", osvResult.Count)
+	if len(osvResult.Advisories) > 0 && osvResult.Advisories[0].Summary != "" {
+		summary = osvResult.Advisories[0].Summary
 	}
-	return providers
+	return []auditProvider{{
+		Provider:  "OSV",
+		Status:    status2,
+		RiskLevel: string(osvResult.MaxSeverity),
+		Summary:   summary,
+	}}
 }
 
 // ── Output ─────────────────────────────────────────────────
@@ -382,6 +408,13 @@ func printAuditSummaries(results []auditSkillResult) {
 				rl)
 			if a.Summary != "" {
 				fmt.Printf("         %s%s%s\n", ansiDim, a.Summary, ansiReset)
+			}
+			if a.Slug != "" && r.SkillID != "" {
+				url := fmt.Sprintf("https://skills.sh/%s/security/%s", r.SkillID, a.Slug)
+				fmt.Printf("         %s%s%s\n", ansiDim, url, ansiReset)
+			}
+			if a.AuditedAt != "" {
+				fmt.Printf("         %saudited: %s%s\n", ansiDim, formatDate(a.AuditedAt), ansiReset)
 			}
 		}
 		fmt.Println()
