@@ -44,6 +44,7 @@ func buildSkillsCmd(ver string) *cobra.Command {
 		buildRemoveCmd(),
 		buildListCmd(),
 		buildFindCmd(),
+		buildOfficialCmd(),
 		buildUpdateCmd(),
 		buildAuditCmd(),
 		buildInitCmd(ver),

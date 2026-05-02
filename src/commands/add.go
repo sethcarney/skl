@@ -21,15 +21,16 @@ import (
 // ─── Options ───────────────────────────────────────────────────────────────────
 
 type AddOptions struct {
-	Global    bool
-	Project   bool
-	Agents    []string // empty = prompt
-	Skills    []string // empty = prompt; "*" = all
-	ListOnly  bool
-	Yes       bool // skip prompts
-	Copy      bool
-	All       bool // --all: skill '*', agent '*', -y
-	FullDepth bool
+	Global     bool
+	Project    bool
+	Agents     []string // empty = prompt
+	Skills     []string // empty = prompt; "*" = all
+	ListOnly   bool
+	Yes        bool // skip prompts
+	Copy       bool
+	All        bool // --all: skill '*', agent '*', -y
+	FullDepth  bool
+	SkipAudit  bool
 }
 
 func buildAddCmd(ver string) *cobra.Command {
@@ -81,6 +82,7 @@ pass them space-separated after the flag or repeat the flag for each value
 	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking")
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
+	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
@@ -300,16 +302,6 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		}
 	}
 
-	// OSV advisory check (async, don't block)
-	osvCh := make(chan *registry.OSVResult, 1)
-	if ownerRepo != "" && parsed.Type == source.SourceTypeGitHub {
-		go func() {
-			osvCh <- registry.FetchOSVAdvisories(ownerRepo, 5000)
-		}()
-	} else {
-		osvCh <- nil
-	}
-
 	// Clone repo
 	ref := parsed.Ref
 	spin := ui.NewSpinner("Cloning " + parsed.URL + "...")
@@ -347,15 +339,16 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 
 	selectedSkills := selectSkills(skills, opts)
 
+	// Start audit concurrently while scope/agent prompts run
+	auditCh := startInstallAudit(ownerRepo, parsed.Type, opts.SkipAudit, selectedSkills)
+
 	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
 		return
 	}
 
-	// Show OSV advisories if any
-	osv := <-osvCh
-	if osv != nil && osv.Count > 0 {
-		showOSVAdvisories(osv, ownerRepo)
+	if !confirmInstallAfterAudit(<-auditCh, opts.Yes) {
+		return
 	}
 
 	fmt.Println()
@@ -430,19 +423,16 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 		}
 	}
 
+	// Start audit concurrently while scope/agent prompts run
+	auditCh := startBlobInstallAudit(ownerRepo, opts.SkipAudit, selectedBlob)
+
 	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
 		return
 	}
 
-	// OSV check (non-blocking)
-	osv := <-func() chan *registry.OSVResult {
-		ch := make(chan *registry.OSVResult, 1)
-		go func() { ch <- registry.FetchOSVAdvisories(ownerRepo, 5000) }()
-		return ch
-	}()
-	if osv != nil && osv.Count > 0 {
-		showOSVAdvisories(osv, ownerRepo)
+	if !confirmInstallAfterAudit(<-auditCh, opts.Yes) {
+		return
 	}
 
 	fmt.Println()
@@ -876,18 +866,115 @@ func maybeShowFindPrompt(cwd string) {
 	_ = lock.DismissPrompt("findSkillsPrompt")
 }
 
-func showOSVAdvisories(osv *registry.OSVResult, ownerRepo string) {
-	if osv == nil || osv.Count == 0 {
-		return
+// ─── Install-time security audit ──────────────────────────────────────────────
+
+type installAuditEntry struct {
+	Name   string
+	Audits []auditProvider
+}
+
+func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bool, skills []*skill.Skill) chan []installAuditEntry {
+	ch := make(chan []installAuditEntry, 1)
+	isPublic := (srcType == source.SourceTypeGitHub || srcType == source.SourceTypeGitLab) && ownerRepo != ""
+	if !isPublic || skipAudit {
+		ch <- nil
+		return ch
 	}
-	fmt.Printf("\n%s⚠ Security advisories for %s:%s\n", ansiText, ownerRepo, ansiReset)
-	for _, a := range osv.Advisories {
-		fmt.Printf("  %s[%s]%s %s%s%s  %s%s%s\n",
-			ansiDim, string(a.Severity), ansiReset,
-			ansiText, a.ID, ansiReset,
-			ansiDim, a.Summary, ansiReset)
+	go func() {
+		var results []installAuditEntry
+		for _, s := range skills {
+			slug := sanitizeName(s.Name)
+			results = append(results, installAuditEntry{Name: s.Name, Audits: fetchSkillAudits(ownerRepo + "/" + slug)})
+		}
+		ch <- results
+	}()
+	return ch
+}
+
+func startBlobInstallAudit(ownerRepo string, skipAudit bool, skills []*blob.BlobSkill) chan []installAuditEntry {
+	ch := make(chan []installAuditEntry, 1)
+	if ownerRepo == "" || skipAudit {
+		ch <- nil
+		return ch
+	}
+	go func() {
+		var results []installAuditEntry
+		for _, s := range skills {
+			slug := blob.ToSkillSlug(s.Name)
+			results = append(results, installAuditEntry{Name: s.Name, Audits: fetchSkillAudits(ownerRepo + "/" + slug)})
+		}
+		ch <- results
+	}()
+	return ch
+}
+
+func confirmInstallAfterAudit(entries []installAuditEntry, autoYes bool) bool {
+	if len(entries) == 0 {
+		return true
+	}
+
+	type issue struct {
+		skillName string
+		provider  auditProvider
+	}
+	var issues []issue
+	for _, e := range entries {
+		for _, a := range e.Audits {
+			if a.Status == "warn" || a.Status == "fail" {
+				issues = append(issues, issue{e.Name, a})
+			}
+		}
+	}
+	if len(issues) == 0 {
+		return true
+	}
+
+	hasFail := false
+	for _, iss := range issues {
+		if iss.provider.Status == "fail" {
+			hasFail = true
+			break
+		}
+	}
+
+	label := "Security warnings"
+	if hasFail {
+		label = "Security issues"
+	}
+	fmt.Printf("%s⚠  %s found:%s\n\n", ansiYellow, label, ansiReset)
+
+	for _, iss := range issues {
+		color := auditStatusColor(iss.provider.Status)
+		badge := auditStatusBadge(iss.provider.Status)
+		rl := ""
+		if iss.provider.RiskLevel != "" && iss.provider.RiskLevel != "NONE" {
+			rl = fmt.Sprintf("  %s%s%s", riskLevelColor(iss.provider.RiskLevel), iss.provider.RiskLevel, ansiReset)
+		}
+		fmt.Printf("  %s%s%s %s%s%s  %s%s%s%s\n",
+			color, badge, ansiReset,
+			ansiDim, iss.provider.Provider, ansiReset,
+			ansiText, iss.skillName, ansiReset,
+			rl)
+		if iss.provider.Summary != "" {
+			fmt.Printf("    %s%s%s\n", ansiDim, iss.provider.Summary, ansiReset)
+		}
 	}
 	fmt.Println()
+
+	if autoYes {
+		fmt.Printf("%sContinuing with --yes flag.%s\n\n", ansiDim, ansiReset)
+		return true
+	}
+
+	idx, ok := ui.UiSelect("Security findings detected. Continue?", []ui.UIOption{
+		{Label: "Cancel installation"},
+		{Label: "Install anyway", Hint: "proceed despite findings"},
+	})
+	if !ok || idx == 0 {
+		fmt.Println("Installation cancelled.")
+		return false
+	}
+	return true
 }
 
 func skillFilterFromOpts(opts AddOptions, parsed source.ParsedSource) string {
