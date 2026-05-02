@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/lock"
@@ -16,29 +17,53 @@ import (
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
+const auditAPIBase = "https://skills.sh/api/v1/skills"
+
+// ── API types ──────────────────────────────────────────────
+
+type skillsShAuditResponse struct {
+	ID     string            `json:"id"`
+	Source string            `json:"source"`
+	Slug   string            `json:"slug"`
+	Audits []skillsShAudit   `json:"audits"`
+}
+
+type skillsShAudit struct {
+	Provider   string   `json:"provider"`
+	Slug       string   `json:"slug"`
+	Status     string   `json:"status"`   // pass / warn / fail
+	Summary    string   `json:"summary"`
+	AuditedAt  string   `json:"auditedAt"`
+	RiskLevel  string   `json:"riskLevel,omitempty"`
+	Categories []string `json:"categories,omitempty"`
+}
+
+// ── Result types ───────────────────────────────────────────
+
+type auditSkillResult struct {
+	Name       string          `json:"name"`
+	Scope      string          `json:"scope"`
+	SourceType string          `json:"sourceType"`
+	Source     string          `json:"source"`
+	UpdatedAt  string          `json:"updatedAt,omitempty"`
+	SyncStatus string          `json:"syncStatus"` // up-to-date / outdated / unknown / local / unchecked
+	Audits     []auditProvider `json:"audits,omitempty"`
+	SkillID    string          `json:"skillId,omitempty"`
+}
+
+type auditProvider struct {
+	Provider  string `json:"provider"`
+	Status    string `json:"status"`
+	RiskLevel string `json:"riskLevel,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+}
+
+// ── Command ────────────────────────────────────────────────
+
 type AuditOptions struct {
 	Global  bool
 	Project bool
 	JSON    bool
-}
-
-type auditSkillResult struct {
-	Name          string          `json:"name"`
-	Scope         string          `json:"scope"`
-	SourceType    string          `json:"sourceType"`
-	Source        string          `json:"source"`
-	InstalledAt   string          `json:"installedAt,omitempty"`
-	UpdatedAt     string          `json:"updatedAt,omitempty"`
-	SyncStatus    string          `json:"syncStatus"`
-	AdvisoryCount int             `json:"advisoryCount"`
-	MaxSeverity   string          `json:"maxSeverity,omitempty"`
-	Advisories    []auditAdvisory `json:"advisories,omitempty"`
-}
-
-type auditAdvisory struct {
-	ID       string `json:"id"`
-	Summary  string `json:"summary"`
-	Severity string `json:"severity"`
 }
 
 func buildAuditCmd() *cobra.Command {
@@ -47,7 +72,10 @@ func buildAuditCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "audit [skills...]",
 		Short: "Audit installed skills for updates and security advisories",
-		Long: fmt.Sprintf(`Audit installed skills for sync status and known security advisories.
+		Long: fmt.Sprintf(`Audit installed skills for sync status and security audit results.
+
+Security data is sourced from skills.sh, which aggregates results from
+Gen Agent Trust Hub, Socket, Snyk, Runlayer, and ZeroLeaks.
 
 %sExamples:%s
   mdm skills audit
@@ -67,6 +95,8 @@ func buildAuditCmd() *cobra.Command {
 	return cmd
 }
 
+// ── Run ────────────────────────────────────────────────────
+
 func runAudit(skillFilter []string, opts AuditOptions) {
 	global := opts.Global
 	project := opts.Project
@@ -83,7 +113,8 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 			if !matchesFilter(sName, entry.PluginName, skillFilter) {
 				continue
 			}
-			results = append(results, auditEntry(sName, "global", entry))
+			r := auditEntryFromGlobal(sName, entry)
+			results = append(results, r)
 		}
 	}
 
@@ -94,13 +125,8 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 			if !matchesFilterSimple(sName, skillFilter) {
 				continue
 			}
-			// Convert LocalSkillLockEntry to SkillLockEntry for uniform handling
-			globalEntry := lock.SkillLockEntry{
-				Source:     entry.Source,
-				SourceType: entry.SourceType,
-				Ref:        entry.Ref,
-			}
-			results = append(results, auditEntry(sName, "project", globalEntry))
+			r := auditEntryFromLocal(sName, entry)
+			results = append(results, r)
 		}
 	}
 
@@ -113,7 +139,6 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 		return
 	}
 
-	// Enrich with sync status and security info
 	if !opts.JSON {
 		fmt.Printf("\n%sAuditing %d skill(s)...%s\n\n", ansiDim, len(results), ansiReset)
 	}
@@ -124,7 +149,7 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 		if !opts.JSON {
 			spin = ui.NewSpinner(fmt.Sprintf("Checking %s...", r.Name))
 		}
-		enrichAuditResult(r)
+		enrichResult(r)
 		if spin != nil {
 			spin.Stop("")
 		}
@@ -137,21 +162,60 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 	}
 
 	printAuditResults(results)
-}
 
-func auditEntry(name, scope string, entry lock.SkillLockEntry) auditSkillResult {
-	return auditSkillResult{
-		Name:        name,
-		Scope:       scope,
-		SourceType:  entry.SourceType,
-		Source:      entry.Source,
-		InstalledAt: entry.InstalledAt,
-		UpdatedAt:   entry.UpdatedAt,
-		SyncStatus:  "unknown",
+	// Offer summaries if any security data exists and stdout is a TTY
+	hasSecurity := false
+	for _, r := range results {
+		if len(r.Audits) > 0 {
+			hasSecurity = true
+			break
+		}
+	}
+	if hasSecurity && term.IsTerminal(os.Stdin.Fd()) {
+		fmt.Printf("%s[s]%s show audit summaries  %s[any key]%s exit  ", ansiText, ansiReset, ansiDim, ansiReset)
+		if pressedS() {
+			fmt.Println()
+			printAuditSummaries(results)
+		} else {
+			fmt.Println()
+		}
 	}
 }
 
-func enrichAuditResult(r *auditSkillResult) {
+// ── Entry builders ─────────────────────────────────────────
+
+func auditEntryFromGlobal(name string, entry lock.SkillLockEntry) auditSkillResult {
+	r := auditSkillResult{
+		Name:       name,
+		Scope:      "global",
+		SourceType: entry.SourceType,
+		Source:     entry.Source,
+		UpdatedAt:  entry.UpdatedAt,
+		SyncStatus: "unknown",
+	}
+	if entry.PluginName != "" {
+		parsed := source.ParseSource(entry.Source)
+		ownerRepo := source.GetOwnerRepo(parsed)
+		if ownerRepo != "" {
+			r.SkillID = ownerRepo + "/" + entry.PluginName
+		}
+	}
+	return r
+}
+
+func auditEntryFromLocal(name string, entry lock.LocalSkillLockEntry) auditSkillResult {
+	return auditSkillResult{
+		Name:       name,
+		Scope:      "project",
+		SourceType: entry.SourceType,
+		Source:     entry.Source,
+		SyncStatus: "unknown",
+	}
+}
+
+// ── Enrichment ─────────────────────────────────────────────
+
+func enrichResult(r *auditSkillResult) {
 	isGitSource := r.SourceType == string(source.SourceTypeGitHub) ||
 		r.SourceType == string(source.SourceTypeGitLab) ||
 		r.SourceType == string(source.SourceTypeGit)
@@ -161,54 +225,70 @@ func enrichAuditResult(r *auditSkillResult) {
 		return
 	}
 
-	parsed := source.ParseSource(r.Source)
-	ownerRepo := source.GetOwnerRepo(parsed)
-
-	// Sync check
-	entry := lock.SkillLockEntry{
-		Source:          r.Source,
-		SourceType:      r.SourceType,
-		SkillFolderHash: "", // will cause false if empty, checked inside checkSkillUpToDate
-	}
-	_ = entry
-
-	// Re-read the full entry from lock to get SkillFolderHash and SkillPath
-	globalLock := lock.ReadSkillLock()
-	if e, ok := globalLock.Skills[r.Name]; ok {
-		upToDate, err := checkSkillUpToDate(r.Name, e)
-		if err != nil {
-			r.SyncStatus = "unknown"
-		} else if upToDate {
-			r.SyncStatus = "up-to-date"
-		} else {
-			r.SyncStatus = "outdated"
+	// Sync status: only works for global skills that have a stored hash
+	if r.Scope == "global" {
+		globalLock := lock.ReadSkillLock()
+		if e, ok := globalLock.Skills[r.Name]; ok {
+			upToDate, err := checkSkillUpToDate(r.Name, e)
+			if err != nil {
+				r.SyncStatus = "unknown"
+			} else if upToDate {
+				r.SyncStatus = "up-to-date"
+			} else {
+				r.SyncStatus = "outdated"
+			}
 		}
 	} else {
-		// Project-scope skill: no hash stored, mark as unchecked
 		r.SyncStatus = "unchecked"
 	}
 
-	// Security check
-	if ownerRepo != "" {
-		osvResult := registry.FetchOSVAdvisories(ownerRepo, 5000)
-		if osvResult != nil {
-			r.AdvisoryCount = osvResult.Count
-			if osvResult.Count > 0 {
-				r.MaxSeverity = string(osvResult.MaxSeverity)
-				for _, a := range osvResult.Advisories {
-					r.Advisories = append(r.Advisories, auditAdvisory{
-						ID:       a.ID,
-						Summary:  a.Summary,
-						Severity: string(a.Severity),
-					})
-				}
-			}
+	// Security: query skills.sh audit endpoint
+	if r.SkillID != "" {
+		r.Audits = fetchSkillAudits(r.SkillID)
+	} else if r.Scope == "project" {
+		// Try to derive a skill ID for project skills
+		parsed := source.ParseSource(r.Source)
+		ownerRepo := source.GetOwnerRepo(parsed)
+		if ownerRepo != "" {
+			r.SkillID = ownerRepo + "/" + r.Name
+			r.Audits = fetchSkillAudits(r.SkillID)
 		}
 	}
 }
 
+func fetchSkillAudits(skillID string) []auditProvider {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	url := auditAPIBase + "/audit/" + skillID
+	body, status, err := registry.HttpGetText(ctx, url)
+	if err != nil || status == 404 {
+		return nil
+	}
+	if status != 200 {
+		return nil
+	}
+
+	var resp skillsShAuditResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return nil
+	}
+
+	var providers []auditProvider
+	for _, a := range resp.Audits {
+		providers = append(providers, auditProvider{
+			Provider:  a.Provider,
+			Status:    a.Status,
+			RiskLevel: a.RiskLevel,
+			Summary:   a.Summary,
+		})
+	}
+	return providers
+}
+
+// ── Output ─────────────────────────────────────────────────
+
 func printAuditResults(results []auditSkillResult) {
-	// Group by scope
 	byScope := map[string][]auditSkillResult{}
 	for _, r := range results {
 		byScope[r.Scope] = append(byScope[r.Scope], r)
@@ -223,64 +303,158 @@ func printAuditResults(results []auditSkillResult) {
 		fmt.Printf("%s%s skills:%s\n\n", ansiText, scopeTitle, ansiReset)
 
 		for _, r := range scopeResults {
-			// Name + sync badge
-			syncBadge, syncColor := syncBadge(r.SyncStatus)
-			fmt.Printf("  %s%s%s  %s%s%s\n", ansiBold, r.Name, ansiReset, syncColor, syncBadge, ansiReset)
+			syncStr, syncColor := syncBadge(r.SyncStatus)
+			fmt.Printf("  %s%s%s\n", ansiBold, r.Name, ansiReset)
+			fmt.Printf("    %ssync:%s     %s%s%s\n", ansiDim, ansiReset, syncColor, syncStr, ansiReset)
 
-			// Source info
-			fmt.Printf("    %ssource:%s %s%s%s\n", ansiDim, ansiReset, ansiDim, r.Source, ansiReset)
-
-			// Dates
-			if r.UpdatedAt != "" {
-				fmt.Printf("    %supdated:%s %s%s%s\n", ansiDim, ansiReset, ansiDim, formatDate(r.UpdatedAt), ansiReset)
+			if len(r.Audits) == 0 {
+				if r.SourceType == string(source.SourceTypeGitHub) || r.SourceType == string(source.SourceTypeGitLab) {
+					fmt.Printf("    %ssecurity:%s %snot in registry%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
+				}
+			} else {
+				fmt.Printf("    %ssecurity:%s %s\n", ansiDim, ansiReset, formatAuditLine(r.Audits))
 			}
 
-			// Security
-			secStr, secColor := securityBadge(r.AdvisoryCount, r.MaxSeverity)
-			fmt.Printf("    %ssecurity:%s %s%s%s\n", ansiDim, ansiReset, secColor, secStr, ansiReset)
-
-			// Advisory details
-			if r.AdvisoryCount > 0 {
-				for _, a := range r.Advisories {
-					sevColor := severityColor(a.Severity)
-					summary := a.Summary
-					if len(summary) > 80 {
-						summary = summary[:77] + "..."
-					}
-					fmt.Printf("      %s%s%s %s(%s)%s %s%s%s\n",
-						ansiDim, a.ID, ansiReset,
-						sevColor, a.Severity, ansiReset,
-						ansiDim, summary, ansiReset)
-				}
+			if r.UpdatedAt != "" {
+				fmt.Printf("    %ssource:%s   %s%s%s\n", ansiDim, ansiReset, ansiDim, r.Source, ansiReset)
+				fmt.Printf("    %supdated:%s  %s%s%s\n", ansiDim, ansiReset, ansiDim, formatDate(r.UpdatedAt), ansiReset)
+			} else {
+				fmt.Printf("    %ssource:%s   %s%s%s\n", ansiDim, ansiReset, ansiDim, r.Source, ansiReset)
 			}
 			fmt.Println()
 		}
 	}
 
-	// Summary line
+	// Summary
 	total := len(results)
-	outdated := 0
-	advisories := 0
+	outdated, warned, failed := 0, 0, 0
 	for _, r := range results {
 		if r.SyncStatus == "outdated" {
 			outdated++
 		}
-		if r.AdvisoryCount > 0 {
-			advisories++
+		for _, a := range r.Audits {
+			if a.Status == "fail" {
+				failed++
+				break
+			} else if a.Status == "warn" {
+				warned++
+				break
+			}
 		}
 	}
+
 	fmt.Printf("%sAudit complete:%s %d skill(s)", ansiText, ansiReset, total)
 	if outdated > 0 {
 		fmt.Printf(", %s%d outdated%s", ansiYellow, outdated, ansiReset)
 	}
-	if advisories > 0 {
-		fmt.Printf(", %s%d with advisories%s", ansiRed, advisories, ansiReset)
+	if failed > 0 {
+		fmt.Printf(", %s%d security fail%s", ansiRed, failed, ansiReset)
 	}
-	if outdated == 0 && advisories == 0 {
+	if warned > 0 {
+		fmt.Printf(", %s%d security warn%s", ansiYellow, warned, ansiReset)
+	}
+	if outdated == 0 && failed == 0 && warned == 0 {
 		fmt.Printf(", %sall clear%s", ansiGreen, ansiReset)
 	}
 	fmt.Println()
 	fmt.Println()
+}
+
+func printAuditSummaries(results []auditSkillResult) {
+	fmt.Printf("%sSecurity summaries:%s\n\n", ansiBold, ansiReset)
+	any := false
+	for _, r := range results {
+		if len(r.Audits) == 0 {
+			continue
+		}
+		any = true
+		fmt.Printf("  %s%s%s\n", ansiBold, r.Name, ansiReset)
+		for _, a := range r.Audits {
+			statusColor := auditStatusColor(a.Status)
+			badge := auditStatusBadge(a.Status)
+			rl := ""
+			if a.RiskLevel != "" && a.RiskLevel != "NONE" {
+				rl = fmt.Sprintf("  %s[%s]%s", riskLevelColor(a.RiskLevel), a.RiskLevel, ansiReset)
+			}
+			fmt.Printf("    %s%s%s %s%-20s%s%s\n",
+				statusColor, badge, ansiReset,
+				ansiDim, a.Provider, ansiReset,
+				rl)
+			if a.Summary != "" {
+				fmt.Printf("         %s%s%s\n", ansiDim, a.Summary, ansiReset)
+			}
+		}
+		fmt.Println()
+	}
+	if !any {
+		fmt.Printf("%sNo security data available.%s\n\n", ansiDim, ansiReset)
+	}
+}
+
+// formatAuditLine renders a compact one-line summary of all provider results.
+func formatAuditLine(audits []auditProvider) string {
+	var parts []string
+	for _, a := range audits {
+		color := auditStatusColor(a.Status)
+		badge := auditStatusBadge(a.Status)
+		name := shortProviderName(a.Provider)
+		rl := ""
+		if a.RiskLevel != "" && a.RiskLevel != "NONE" {
+			rl = fmt.Sprintf(" %s[%s]%s", riskLevelColor(a.RiskLevel), a.RiskLevel, ansiReset)
+		}
+		parts = append(parts, fmt.Sprintf("%s%s%s %s%s%s%s", color, badge, ansiReset, ansiDim, name, ansiReset, rl))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func shortProviderName(full string) string {
+	switch full {
+	case "Gen Agent Trust Hub":
+		return "TrustHub"
+	case "Socket":
+		return "Socket"
+	case "Snyk":
+		return "Snyk"
+	case "Runlayer":
+		return "Runlayer"
+	case "ZeroLeaks":
+		return "ZeroLeaks"
+	}
+	return full
+}
+
+func auditStatusBadge(status string) string {
+	switch status {
+	case "pass":
+		return "✓"
+	case "warn":
+		return "▲"
+	case "fail":
+		return "✗"
+	}
+	return "?"
+}
+
+func auditStatusColor(status string) string {
+	switch status {
+	case "pass":
+		return ansiGreen
+	case "warn":
+		return ansiYellow
+	case "fail":
+		return ansiRed
+	}
+	return ansiDim
+}
+
+func riskLevelColor(level string) string {
+	switch strings.ToUpper(level) {
+	case "CRITICAL", "HIGH":
+		return ansiRed
+	case "MEDIUM":
+		return ansiYellow
+	}
+	return ansiDim
 }
 
 func syncBadge(status string) (string, string) {
@@ -298,28 +472,6 @@ func syncBadge(status string) (string, string) {
 	}
 }
 
-func securityBadge(count int, maxSeverity string) (string, string) {
-	if count == 0 {
-		return "no advisories", ansiGreen
-	}
-	label := fmt.Sprintf("%d advisor%s", count, map[bool]string{true: "y", false: "ies"}[count == 1])
-	if maxSeverity != "" {
-		label += " (" + maxSeverity + ")"
-	}
-	return label, severityColor(maxSeverity)
-}
-
-func severityColor(sev string) string {
-	switch strings.ToUpper(sev) {
-	case "CRITICAL", "HIGH":
-		return ansiRed
-	case "MEDIUM":
-		return ansiYellow
-	default:
-		return ansiDim
-	}
-}
-
 func formatDate(ts string) string {
 	t, err := time.Parse(time.RFC3339, ts)
 	if err != nil {
@@ -327,6 +479,8 @@ func formatDate(ts string) string {
 	}
 	return t.Format("2006-01-02")
 }
+
+// ── Filter helpers ─────────────────────────────────────────
 
 func matchesFilter(name, pluginName string, filter []string) bool {
 	if len(filter) == 0 {
@@ -352,27 +506,19 @@ func matchesFilterSimple(name string, filter []string) bool {
 	return false
 }
 
-// fetchSkillsShInfo queries skills.sh for description/stars enrichment.
-func fetchSkillsShInfo(name string) *FindSkillResult {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+// ── Key press ──────────────────────────────────────────────
 
-	url := findAPIURL + "?q=" + name
-	body, status, err := registry.HttpGetText(ctx, url)
-	if err != nil || status != 200 {
-		return nil
+// pressedS reads a single keypress in raw mode and returns true if it was 's'/'S'.
+func pressedS() bool {
+	state, err := term.MakeRaw(os.Stdin.Fd())
+	if err != nil {
+		// fallback: buffered read (requires Enter)
+		var b [1]byte
+		_, _ = os.Stdin.Read(b[:])
+		return b[0] == 's' || b[0] == 'S'
 	}
-
-	var wrapped struct {
-		Skills []FindSkillResult `json:"skills"`
-	}
-	if err := json.Unmarshal([]byte(body), &wrapped); err != nil {
-		return nil
-	}
-	for _, s := range wrapped.Skills {
-		if strings.EqualFold(s.Name, name) {
-			return &s
-		}
-	}
-	return nil
+	var b [1]byte
+	_, _ = os.Stdin.Read(b[:])
+	_ = term.Restore(os.Stdin.Fd(), state)
+	return b[0] == 's' || b[0] == 'S'
 }
