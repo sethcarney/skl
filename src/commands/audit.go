@@ -126,7 +126,7 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 		cwd, _ := os.Getwd()
 		localLock := lock.ReadLocalLock(cwd)
 		for sName, entry := range localLock.Skills {
-			if !matchesFilterSimple(sName, skillFilter) {
+			if !matchesFilter(sName, "", skillFilter) {
 				continue
 			}
 			r := auditEntryFromLocal(sName, entry)
@@ -542,18 +542,6 @@ func matchesFilter(name, pluginName string, filter []string) bool {
 	}
 	for _, f := range filter {
 		if strings.EqualFold(name, f) || strings.EqualFold(pluginName, f) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchesFilterSimple(name string, filter []string) bool {
-	if len(filter) == 0 {
-		return true
-	}
-	for _, f := range filter {
-		if strings.EqualFold(name, f) {
 			return true
 		}
 	}

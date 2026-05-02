@@ -110,7 +110,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 	if len(skillFilter) > 0 && !(len(skillFilter) == 1 && skillFilter[0] == "*") {
 		for _, s := range installed {
 			for _, f := range skillFilter {
-				if strings.EqualFold(s.Name, f) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(f)) {
+				if skillNameMatches(s.Name, f) {
 					toRemove = append(toRemove, s)
 					break
 				}

@@ -169,7 +169,7 @@ func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		for _, s := range filtered {
 			pre := false
 			for _, p := range opts.PreselectedSkills {
-				if strings.EqualFold(s.Name, p) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(p)) {
+				if skillNameMatches(s.Name, p) {
 					pre = true
 					break
 				}
@@ -586,7 +586,7 @@ func discoverSkillsInDir(dir string, fullDepth bool, skillFilter string) []*skil
 	if skillFilter != "" && skillFilter != "*" {
 		var filtered []*skill.Skill
 		for _, s := range skills {
-			if strings.EqualFold(s.Name, skillFilter) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(skillFilter)) {
+			if skillNameMatches(s.Name, skillFilter) {
 				filtered = append(filtered, s)
 			}
 		}
@@ -605,7 +605,7 @@ func selectSkills(skills []*skill.Skill, opts AddOptions) []*skill.Skill {
 			var filtered []*skill.Skill
 			for _, s := range skills {
 				for _, f := range opts.Skills {
-					if strings.EqualFold(s.Name, f) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(f)) {
+					if skillNameMatches(s.Name, f) {
 						filtered = append(filtered, s)
 						break
 					}
@@ -620,7 +620,7 @@ func selectSkills(skills []*skill.Skill, opts AddOptions) []*skill.Skill {
 		var filtered []*skill.Skill
 		for _, s := range skills {
 			for _, f := range opts.Skills {
-				if strings.EqualFold(s.Name, f) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(f)) {
+				if skillNameMatches(s.Name, f) {
 					filtered = append(filtered, s)
 					break
 				}
@@ -863,7 +863,7 @@ func reorderSkillsPreselectedFirst(skills []*skill.Skill, preselected []string) 
 	}
 	isPreselected := func(s *skill.Skill) bool {
 		for _, pre := range preselected {
-			if strings.EqualFold(s.Name, pre) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(pre)) {
+			if skillNameMatches(s.Name, pre) {
 				return true
 			}
 		}

@@ -47,6 +47,10 @@ func sanitizeName(name string) string {
 	return sanitized
 }
 
+func skillNameMatches(name, filter string) bool {
+	return strings.EqualFold(name, filter) || strings.EqualFold(sanitizeName(name), sanitizeName(filter))
+}
+
 func isPathSafe(basePath, targetPath string) bool {
 	base, err1 := filepath.Abs(basePath)
 	target, err2 := filepath.Abs(targetPath)
