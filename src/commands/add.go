@@ -881,10 +881,17 @@ func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bo
 		return ch
 	}
 	go func() {
+		// OSV runs concurrently with the per-skill skills.sh fetches
+		osvCh := make(chan *registry.OSVResult, 1)
+		go func() { osvCh <- registry.FetchOSVAdvisories(ownerRepo, 5000) }()
+
 		var results []installAuditEntry
 		for _, s := range skills {
 			slug := sanitizeName(s.Name)
 			results = append(results, installAuditEntry{Name: s.Name, Audits: fetchSkillAudits(ownerRepo + "/" + slug)})
+		}
+		if osv := <-osvCh; osv != nil && osv.Count > 0 {
+			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))
 		}
 		ch <- results
 	}()
@@ -898,14 +905,41 @@ func startBlobInstallAudit(ownerRepo string, skipAudit bool, skills []*blob.Blob
 		return ch
 	}
 	go func() {
+		osvCh := make(chan *registry.OSVResult, 1)
+		go func() { osvCh <- registry.FetchOSVAdvisories(ownerRepo, 5000) }()
+
 		var results []installAuditEntry
 		for _, s := range skills {
 			slug := blob.ToSkillSlug(s.Name)
 			results = append(results, installAuditEntry{Name: s.Name, Audits: fetchSkillAudits(ownerRepo + "/" + slug)})
 		}
+		if osv := <-osvCh; osv != nil && osv.Count > 0 {
+			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))
+		}
 		ch <- results
 	}()
 	return ch
+}
+
+func osvToInstallAuditEntry(ownerRepo string, osv *registry.OSVResult) installAuditEntry {
+	var audits []auditProvider
+	for _, a := range osv.Advisories {
+		status := "warn"
+		if a.Severity == registry.OSVCritical || a.Severity == registry.OSVHigh {
+			status = "fail"
+		}
+		summary := a.ID
+		if a.Summary != "" {
+			summary += ": " + a.Summary
+		}
+		audits = append(audits, auditProvider{
+			Provider:  "OSV",
+			Status:    status,
+			RiskLevel: string(a.Severity),
+			Summary:   summary,
+		})
+	}
+	return installAuditEntry{Name: ownerRepo, Audits: audits}
 }
 
 func confirmInstallAfterAudit(entries []installAuditEntry, autoYes bool) bool {
