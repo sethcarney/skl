@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
+
+	"github.com/sethcarney/mdm/internal/version"
 )
 
 const releasesAPI = "https://api.github.com/repos/sethcarney/mdm/releases/latest"
@@ -25,7 +25,7 @@ type githubRelease struct {
 
 // CheckForUpdate starts a background goroutine that checks for a newer release.
 // It returns a channel that receives the latest version tag if one is available,
-// or an empty string if no update is found or the check fails.
+// or an empty string otherwise. The check never fails loudly.
 func CheckForUpdate(currentVersion string) <-chan string {
 	ch := make(chan string, 1)
 	go func() {
@@ -49,32 +49,33 @@ func IsTerminal() bool {
 }
 
 func check(currentVersion string) string {
-	latest := fromCache()
-	if latest == "" {
+	hit, latest := fromCache()
+	if !hit {
 		latest = fromAPI(currentVersion)
-		if latest != "" {
-			saveCache(latest)
-		}
+		saveCache(latest) // always cache — even "" — to throttle retries
 	}
-	if isNewer(latest, currentVersion) {
+	if version.IsNewer(latest, currentVersion) {
 		return latest
 	}
 	return ""
 }
 
-func fromCache() string {
+// fromCache returns (hit, latestVersion). hit is false when the cache is
+// absent or older than cacheTTL; latestVersion may be "" (meaning the last
+// check found no update or the API was unreachable).
+func fromCache() (bool, string) {
 	data, err := os.ReadFile(cacheFilePath())
 	if err != nil {
-		return ""
+		return false, ""
 	}
 	var entry cacheEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
-		return ""
+		return false, ""
 	}
 	if time.Since(entry.CheckedAt) > cacheTTL {
-		return ""
+		return false, ""
 	}
-	return entry.LatestVersion
+	return true, entry.LatestVersion
 }
 
 func saveCache(latest string) {
@@ -119,25 +120,4 @@ func fromAPI(currentVersion string) string {
 		return ""
 	}
 	return release.TagName
-}
-
-func isNewer(latest, current string) bool {
-	lParts := strings.Split(strings.TrimPrefix(latest, "v"), ".")
-	cParts := strings.Split(strings.TrimPrefix(current, "v"), ".")
-	for i := 0; i < 3; i++ {
-		var l, c int
-		if i < len(lParts) {
-			l, _ = strconv.Atoi(lParts[i])
-		}
-		if i < len(cParts) {
-			c, _ = strconv.Atoi(cParts[i])
-		}
-		if l > c {
-			return true
-		}
-		if l < c {
-			return false
-		}
-	}
-	return false
 }
