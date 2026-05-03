@@ -51,8 +51,18 @@ func IsTerminal() bool {
 func check(currentVersion string) string {
 	hit, latest := fromCache()
 	if !hit {
+		// Pre-write a sentinel ("") before making the network call.  If this
+		// process is killed during the HTTP request (e.g. because the 500 ms
+		// display window expired and main returned), the sentinel is already on
+		// disk and the next invocation will see a cache hit, preventing repeated
+		// API requests within the TTL window.
+		saveCache("")
 		latest = fromAPI(currentVersion)
-		saveCache(latest) // always cache — even "" — to throttle retries
+		if latest != "" {
+			// Overwrite the sentinel with the actual release tag so future
+			// cache hits can show the update notice without another API call.
+			saveCache(latest)
+		}
 	}
 	if version.IsNewer(latest, currentVersion) {
 		return latest

@@ -12,11 +12,12 @@ import (
 )
 
 func main() {
-	// Skip the update check when the user is already running an upgrade — the
-	// in-memory version.Version is stale after the binary is replaced, which
-	// would produce a false-positive "new version available" notice.
+	// Only start the background update check when the notice would actually be
+	// shown: interactive terminal, NO_COLOR not set, and not an upgrade command
+	// (the in-memory version.Version is stale after the binary is replaced,
+	// which would produce a false-positive "new version available" notice).
 	var updateCh <-chan string
-	if !isUpgradeCmd() {
+	if !isUpgradeCmd() && update.IsTerminal() && os.Getenv("NO_COLOR") == "" {
 		updateCh = update.CheckForUpdate(version.Version)
 	}
 
@@ -24,8 +25,8 @@ func main() {
 	cmdErr := root.Execute()
 
 	// Print the notice after command output (success or failure) so the user
-	// always sees it.  Suppress in non-TTY and NO_COLOR environments.
-	if updateCh != nil && update.IsTerminal() && os.Getenv("NO_COLOR") == "" {
+	// always sees it.
+	if updateCh != nil {
 		select {
 		case latest := <-updateCh:
 			if latest != "" {
