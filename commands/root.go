@@ -90,7 +90,7 @@ func BuildRootCmd(ver string) *cobra.Command {
 	root := &cobra.Command{
 		Use:   appName,
 		Short: "The markdown management CLI",
-		Long: fmt.Sprintf("  %s✓%s %sNo telemetry%s   %s✓%s %sOSV vulnerability scanning%s   %s✓%s %sOpen source%s",
+		Long: fmt.Sprintf("  %s✓%s %sNo telemetry%s   %s✓%s %sAudit support%s   %s✓%s %sOpen source%s",
 			ansiGreen, ansiReset, ansiDim, ansiReset,
 			ansiGreen, ansiReset, ansiDim, ansiReset,
 			ansiGreen, ansiReset, ansiDim, ansiReset),
