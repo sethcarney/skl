@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
     paths-ignore:
       - "**/*.md"
   workflow_dispatch:
@@ -19,6 +19,10 @@ jobs:
     permissions:
       contents: write
       id-token: write # needed for OIDC keyless cosign signing
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      hashes: ${{ steps.hash.outputs.hashes }}
+      release_exists: ${{ steps.check.outputs.exists }}
 
     steps:
       - name: Checkout
@@ -26,7 +30,8 @@ jobs:
 
       - name: Get version
         id: version
-        run: echo "version=$(grep 'const Version' internal/version/version.go | grep -oP '"\K[^"]+')" >> $GITHUB_OUTPUT
+        run: echo "version=$(grep 'const Version' internal/version/version.go | grep -oP
+          '"\K[^"]+')" >> $GITHUB_OUTPUT
 
       - name: Check if release already exists
         id: check
@@ -56,8 +61,12 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/mdm-windows-x64.exe
 
       - name: Generate checksums
+        id: hash
         if: steps.check.outputs.exists == 'false'
-        run: cd dist && sha256sum * > sha256sums.txt
+        run: |
+          cd dist
+          sha256sum mdm-linux-x64 mdm-linux-arm64 mdm-macos-x64 mdm-macos-arm64 mdm-windows-x64.exe > sha256sums.txt
+          echo "hashes=$(sha256sum mdm-linux-x64 mdm-linux-arm64 mdm-macos-x64 mdm-macos-arm64 mdm-windows-x64.exe | base64 -w0)" >> $GITHUB_OUTPUT
 
       - name: Install cosign
         if: steps.check.outputs.exists == 'false'
@@ -102,3 +111,16 @@ jobs:
             dist/sha256sums.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  provenance:
+    needs: [ release ]
+    if: needs.release.outputs.release_exists == 'false'
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.release.outputs.hashes }}"
+      upload-assets: true
+      upload-tag-name: "v${{ needs.release.outputs.version }}"
