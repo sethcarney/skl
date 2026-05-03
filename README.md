@@ -42,7 +42,7 @@ mdm skills sync            Sync skills from node_modules
 mdm upgrade                Upgrade the mdm CLI binary
 ```
 
-Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.md) for a detailed walkthrough of the `mdm rules` flow.
+Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.md) for a detailed walkthrough of the `mdm rules` flow, and [docs/obsidian.md](docs/obsidian.md) for integrating with Obsidian vaults.
 
 ## Development
 

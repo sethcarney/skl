@@ -113,6 +113,18 @@ func init() {
 			InstructionsFile: "CLAUDE.md",
 			DetectInstalled:  func() bool { return pathExists(claudeHome) },
 		},
+		"obsidian": {
+			Name:        "obsidian",
+			DisplayName: "Obsidian",
+			SkillsDir:   "Prompts",
+			// No global skills dir — skills are always vault-scoped in Obsidian
+			GlobalSkillsDir: "",
+			ShowInUniversal: true,
+			DetectInstalled: func() bool {
+				cwd, _ := os.Getwd()
+				return pathExists(filepath.Join(cwd, ".obsidian"))
+			},
+		},
 		"openclaw": {
 			Name:            "openclaw",
 			DisplayName:     "OpenClaw",
