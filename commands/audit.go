@@ -354,12 +354,12 @@ func printAuditResults(results []auditSkillResult) {
 
 			if len(r.Audits) == 0 {
 				if r.RegistryError {
-					fmt.Printf("    %ssecurity:%s %slookup unavailable%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
+					fmt.Printf("    %saudit:%s    %slookup unavailable%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
 				} else if r.SourceType == string(source.SourceTypeGitHub) || r.SourceType == string(source.SourceTypeGitLab) {
-					fmt.Printf("    %ssecurity:%s %snot in registry%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
+					fmt.Printf("    %saudit:%s    %snot in registry%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
 				}
 			} else {
-				fmt.Printf("    %ssecurity:%s %s\n", ansiDim, ansiReset, formatAuditLine(r.Audits))
+				fmt.Printf("    %saudit:%s    %s\n", ansiDim, ansiReset, formatAuditLine(r.Audits))
 			}
 
 			if r.UpdatedAt != "" {
