@@ -46,18 +46,19 @@ func buildUpdateCmd() *cobra.Command {
 	return cmd
 }
 
-func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
-	// Determine scope
-	global := opts.Global
-	project := opts.Project
+type updateStats struct{ updated, skipped, failed int }
+
+func resolveUpdateScope(opts UpdateOptions) (global, project bool, ok bool) {
+	global = opts.Global
+	project = opts.Project
 	if !global && !project && !opts.Yes {
-		idx, ok := ui.UiSelect("Update which scope?", []ui.UIOption{
+		idx, uiOk := ui.UiSelect("Update which scope?", []ui.UIOption{
 			{Label: "Both", Hint: "project and global"},
 			{Label: "Project"},
 			{Label: "Global"},
 		})
-		if !ok {
-			return
+		if !uiOk {
+			return false, false, false
 		}
 		switch idx {
 		case 0:
@@ -68,106 +69,89 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 		case 2:
 			global = true
 		}
-	} else if !global && !project {
+		return global, project, true
+	}
+	if !global && !project {
 		global = true
 		project = true
 	}
+	return global, project, true
+}
 
-	updated := 0
-	skipped := 0
-	failed := 0
+func isGitSourceType(st string) bool {
+	return st == string(source.SourceTypeGitHub) ||
+		st == string(source.SourceTypeGitLab) ||
+		st == string(source.SourceTypeGit)
+}
 
-	// Check global skills from lock
-	if global {
-		l := lock.ReadSkillLock()
-		for sName, entry := range l.Skills {
-			if len(skillFilter) > 0 {
-				found := false
-				for _, f := range skillFilter {
-					if strings.EqualFold(sName, f) || strings.EqualFold(f, entry.PluginName) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-			if entry.SourceType != string(source.SourceTypeGitHub) && entry.SourceType != string(source.SourceTypeGitLab) && entry.SourceType != string(source.SourceTypeGit) {
-				skipped++
-				continue
-			}
-
-			fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
-			isUpToDate, err := checkSkillUpToDate(sName, entry)
-			if err != nil {
-				ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
-				skipped++
-				continue
-			}
-			if isUpToDate {
-				ui.LogInfo(sName + " is up to date")
-				skipped++
-				continue
-			}
-
-			// Re-run add to update
-			addOpts := AddOptions{
-				Global: true,
-				Yes:    true,
-				Skills: []string{entry.PluginName},
-			}
-			runAdd(entry.Source, addOpts)
-			updated++
+func updateGlobalSkills(skillFilter []string, stats *updateStats) {
+	l := lock.ReadSkillLock()
+	for sName, entry := range l.Skills {
+		if !matchesFilter(sName, entry.PluginName, skillFilter) {
+			continue
 		}
+		if !isGitSourceType(entry.SourceType) {
+			stats.skipped++
+			continue
+		}
+		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+		isUpToDate, err := checkSkillUpToDate(sName, entry)
+		if err != nil {
+			ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+			stats.skipped++
+			continue
+		}
+		if isUpToDate {
+			ui.LogInfo(sName + " is up to date")
+			stats.skipped++
+			continue
+		}
+		runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}})
+		stats.updated++
 	}
+}
 
-	// Check project skills from local lock
+func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
+	localLock := lock.ReadLocalLock(cwd)
+	for sName, entry := range localLock.Skills {
+		if !matchesFilter(sName, "", skillFilter) {
+			continue
+		}
+		if !isGitSourceType(entry.SourceType) {
+			stats.skipped++
+			continue
+		}
+		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+		src := entry.Source
+		if entry.Ref != "" && !strings.Contains(src, "#") {
+			src = src + "#" + entry.Ref
+		}
+		runAdd(src, AddOptions{Project: true, Yes: true, Skills: []string{sName}})
+		stats.updated++
+	}
+}
+
+func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
+	global, project, ok := resolveUpdateScope(opts)
+	if !ok {
+		return
+	}
+	var stats updateStats
+	if global {
+		updateGlobalSkills(skillFilter, &stats)
+	}
 	if project {
 		cwd, _ := os.Getwd()
-		localLock := lock.ReadLocalLock(cwd)
-		for sName, entry := range localLock.Skills {
-			if len(skillFilter) > 0 {
-				found := false
-				for _, f := range skillFilter {
-					if strings.EqualFold(sName, f) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-			if entry.SourceType != string(source.SourceTypeGitHub) && entry.SourceType != string(source.SourceTypeGitLab) && entry.SourceType != string(source.SourceTypeGit) {
-				skipped++
-				continue
-			}
-
-			fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
-
-			addOpts := AddOptions{
-				Project: true,
-				Yes:     true,
-				Skills:  []string{sName},
-			}
-			src := entry.Source
-			if entry.Ref != "" && !strings.Contains(src, "#") {
-				src = src + "#" + entry.Ref
-			}
-			runAdd(src, addOpts)
-			updated++
-		}
+		updateProjectSkills(skillFilter, cwd, &stats)
 	}
-
 	fmt.Println()
-	if updated == 0 && skipped == 0 && failed == 0 {
+	if stats.updated == 0 && stats.skipped == 0 && stats.failed == 0 {
 		fmt.Printf("%sNo skills to update.%s\n", ansiDim, ansiReset)
 		return
 	}
-	fmt.Printf("%sUpdate complete:%s %d updated, %d already up to date", ansiText, ansiReset, updated, skipped)
-	if failed > 0 {
-		fmt.Printf(", %d failed", failed)
+	fmt.Printf("%sUpdate complete:%s %d updated, %d already up to date", ansiText, ansiReset, stats.updated, stats.skipped)
+	if stats.failed > 0 {
+		fmt.Printf(", %d failed", stats.failed)
 	}
 	fmt.Println()
 	fmt.Println()
@@ -177,13 +161,11 @@ func checkSkillUpToDate(skillName string, entry lock.SkillLockEntry) (bool, erro
 	if entry.SkillFolderHash == "" || entry.SkillPath == "" {
 		return false, nil
 	}
-	ownerRepo := ""
 	parsed := source.ParseSource(entry.Source)
-	ownerRepo = source.GetOwnerRepo(parsed)
+	ownerRepo := source.GetOwnerRepo(parsed)
 	if ownerRepo == "" {
 		return false, nil
 	}
-
 	token := lock.GetGitHubToken()
 	ref := entry.Ref
 	latestHash, err := blob.FetchSkillFolderHash(ownerRepo, entry.SkillPath, token, &ref)

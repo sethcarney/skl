@@ -157,14 +157,14 @@ type UIOption struct {
 // ─── selectModel ───────────────────────────────────────────────────────────────
 
 type selectModel struct {
-	message    string
-	options    []UIOption
-	cursor     int
-	offset     int // scroll offset
-	height     int // visible terminal rows available for the list
-	choice     int
-	cancelled  bool
-	done       bool
+	message   string
+	options   []UIOption
+	cursor    int
+	offset    int // scroll offset
+	height    int // visible terminal rows available for the list
+	choice    int
+	cancelled bool
+	done      bool
 }
 
 func (m *selectModel) visibleHeight() int {
