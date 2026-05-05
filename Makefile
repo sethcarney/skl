@@ -27,6 +27,8 @@ assets/mdm.ico: assets/mdm.svg
 
 # Generate resource_windows.syso from the ICO (Windows-only build tag via filename).
 # Run this before building the Windows release binary.
+# Version is read automatically from internal/version/version.go.
 syso: assets/mdm.ico
+	$(eval VERSION := $(shell grep 'const Version' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/'))
 	go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
-	    -o resource_windows.syso assets/versioninfo.json
+	    -ver $(VERSION).0 -o resource_windows.syso assets/versioninfo.json
