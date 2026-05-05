@@ -208,15 +208,27 @@ func buildAgentsRemoveCmd() *cobra.Command {
 					options = append(options, ui.UIOption{Label: label, Value: name})
 				}
 
-				selected, ok := ui.UiSearchMultiselect("Which agents do you want to remove?", options, nil, nil)
+				// Pre-select all — user unchecks the ones they want to remove.
+				initSel := make([]int, len(options))
+				for i := range options {
+					initSel[i] = i
+				}
+
+				kept, ok := ui.UiSearchMultiselect("Which agents do you want to keep?", options, nil, initSel)
 				if !ok {
 					return nil
 				}
-				for _, i := range selected {
-					toRemove = append(toRemove, options[i].Value)
+				keptSet := map[string]bool{}
+				for _, i := range kept {
+					keptSet[options[i].Value] = true
+				}
+				for _, name := range configured {
+					if !keptSet[name] {
+						toRemove = append(toRemove, name)
+					}
 				}
 				if len(toRemove) == 0 {
-					fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
+					fmt.Printf("%sNo changes made.%s\n", ansiDim, ansiReset)
 					return nil
 				}
 			}
