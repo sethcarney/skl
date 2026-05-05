@@ -178,7 +178,7 @@ func ReadLocalLock(cwd string) LocalSkillLockFile {
 
 func WriteLocalLock(lock LocalSkillLockFile, cwd string) error {
 	// Sort keys for deterministic output
-	sorted := LocalSkillLockFile{Version: lock.Version, Skills: map[string]LocalSkillLockEntry{}}
+	sorted := LocalSkillLockFile{Version: lock.Version, Skills: map[string]LocalSkillLockEntry{}, ConfiguredAgents: lock.ConfiguredAgents}
 	keys := make([]string, 0, len(lock.Skills))
 	for k := range lock.Skills {
 		keys = append(keys, k)
