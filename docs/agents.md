@@ -4,18 +4,32 @@ Manage the list of AI agents mdm should support by default.
 
 The configured agent list is the single source of truth for which agents skills are installed to. It is read whenever `mdm skills add` needs to know which agents to target and is updated automatically when you pick agents interactively.
 
+## Agent categories
+
+Agents fall into three categories that determine whether they need explicit configuration:
+
+| Category               | Description                                             | Needs tracking?                                   |
+| ---------------------- | ------------------------------------------------------- | ------------------------------------------------- |
+| **Shared skills dir**  | Uses `.agents/skills` — skills are auto-installed       | Only if they also have a unique instructions file |
+| **Uses AGENTS.md**     | Reads `AGENTS.md` natively for instructions             | Only if they also have a unique skills dir        |
+| **Both (no tracking)** | Shared skills dir + AGENTS.md (or no instructions file) | Never — always supported automatically            |
+
+Agents in the "both" category (Codex, Gemini CLI, Warp, Replit, etc.) appear as **always included** in every picker and are never added to `configuredAgents`. Agents with a unique skills directory or a non-AGENTS.md instructions file (Claude Code, Cursor, GitHub Copilot, etc.) must be explicitly configured.
+
 ## Why configure agents?
 
 Without a configured list, `mdm skills add` prompts you to pick agents every time. Once you run `mdm agents add`, your preferred agents are pre-selected in every future install prompt — and `mdm skills add --yes` installs to exactly that list without prompting at all.
+
+`mdm rules link` also updates `configuredAgents` automatically when you select agents interactively.
 
 ## Scopes
 
 Agent lists are stored per scope alongside the skill lock file:
 
-| Scope | Storage |
-|---|---|
+| Scope   | Storage                                |
+| ------- | -------------------------------------- |
 | Project | `skills-lock.json` in the project root |
-| Global | `~/.agents/skills-lock.json` |
+| Global  | `~/.agents/skills-lock.json`           |
 
 Use `--global` / `-g` to read and write the global list. The default is project scope.
 
@@ -46,21 +60,22 @@ If no agents are configured yet, the command tells you how to set them up.
 
 ### Flags
 
-| Flag | Description |
-|---|---|
+| Flag           | Description                   |
+| -------------- | ----------------------------- |
 | `--global, -g` | List global configured agents |
 
 ## mdm agents add
 
-With no arguments, opens a searchable multiselect showing all supported agents. Your current configured list is pre-checked. Confirming replaces the entire list with your selection.
+With no arguments, opens a searchable multiselect. Agents that are always supported automatically (shared skills dir + AGENTS.md) are shown in a locked panel to the right of the prompt — they require no configuration and cannot be deselected. Your current configured list is pre-checked in the left panel. Confirming replaces the entire list with your selection.
 
 ```
-? Which agents do you want to configure?
-  ◉ Claude Code
-  ◉ Cursor
-  ○ Windsurf
-  ○ Cline
-  ...
+Which agents do you want to configure?  │  always included:
+  > filter...                           │  ◉ Codex
+  ❯ ◉ Claude Code                      │  ◉ Gemini CLI
+    ◉ Cursor                           │  ◉ Warp
+    ○ Windsurf                         │  ...
+    ○ Cline
+  type to filter · space to toggle · enter to confirm
 ```
 
 When called with agent names, those agents are appended to the existing list (duplicates are ignored).
@@ -78,13 +93,18 @@ mdm agents add --global claude-code
 
 ### Flags
 
-| Flag | Description |
-|---|---|
+| Flag           | Description                     |
+| -------------- | ------------------------------- |
 | `--global, -g` | Add to global configured agents |
 
 ## mdm agents remove
 
 With no arguments, shows a multiselect of your currently configured agents and removes your selection.
+
+After removing agents from the configured list, mdm also cleans up the files that belong exclusively to each removed agent:
+
+- **Skills directory** — the agent's own skills folder (e.g. `.claude/skills/`, `.cursor/skills/`) is removed if it exists. The shared `.agents/skills/` directory is never touched.
+- **Instructions file** — the agent's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed. The shared `AGENTS.md` is never touched.
 
 ```bash
 # Interactive removal
@@ -99,8 +119,8 @@ mdm agents remove --global cursor
 
 ### Flags
 
-| Flag | Description |
-|---|---|
+| Flag           | Description                          |
+| -------------- | ------------------------------------ |
 | `--global, -g` | Remove from global configured agents |
 
 ## Integration with mdm skills add

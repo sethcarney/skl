@@ -12,13 +12,13 @@ Without arguments, an interactive multiselect lets you choose which skills to re
 
 ## Flags
 
-| Flag | Description |
-|---|---|
-| `--global, -g` | Remove from global scope |
-| `--agent, -a` | Remove from specific agents only (repeatable) |
-| `--skill, -s` | Skill names to remove (repeatable) |
-| `--yes, -y` | Skip confirmation prompts |
-| `--all` | Shorthand for `--skill '*' --agent '*' -y` |
+| Flag           | Description                                   |
+| -------------- | --------------------------------------------- |
+| `--global, -g` | Remove from global scope                      |
+| `--agent, -a`  | Remove from specific agents only (repeatable) |
+| `--skill, -s`  | Skill names to remove (repeatable)            |
+| `--yes, -y`    | Skip confirmation prompts                     |
+| `--all`        | Shorthand for `--skill '*' --agent '*' -y`    |
 
 ## Examples
 
@@ -47,7 +47,7 @@ For each skill, mdm removes:
 - Any agent-specific symlinks or copies (e.g. `.claude/skills/<skill>`, `~/.cursor/skills/<skill>`).
 - The entry in `skills-lock.json`.
 
-If `--agent` is provided, only that agent's symlink is removed — the canonical directory and other agent links remain.
+If `--agent` is provided, only that agent's symlink or copy is removed — the canonical directory and other agent links remain.
 
 ## Orphan cleanup
 
