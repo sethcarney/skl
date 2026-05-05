@@ -912,6 +912,19 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 		result = append(result, options[i].Value)
 		userSelected = append(userSelected, options[i].Value)
 	}
+	// Preserve any previously configured agents that weren't shown in the
+	// picker (e.g. github-copilot: uses .agents/skills so it's in the locked
+	// panel, but has a unique instructions file so it was explicitly configured
+	// via rules link). Merge them into the saved list so they aren't wiped.
+	pickerValues := make(map[string]bool)
+	for _, opt := range options {
+		pickerValues[opt.Value] = true
+	}
+	for _, c := range configured {
+		if !pickerValues[c] {
+			userSelected = append(userSelected, c)
+		}
+	}
 	// Only save the user's explicit non-universal selections. Universal agents
 	// (.agents/skills) are always supported — no need to track them.
 	_ = lock.SetConfiguredAgents(userSelected, global, cwd)

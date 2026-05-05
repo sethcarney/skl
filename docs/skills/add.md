@@ -65,6 +65,8 @@ Which agents would you like to install to?  │  always included:
 
 If you have a configured agent list (set via `mdm agents add` or `mdm rules link`), those agents are pre-checked. Otherwise agents detected as installed are pre-checked. Your selection is saved back to `configuredAgents` for future installs.
 
+Agents that use the shared `.agents/skills` directory but also have a unique instruction file (such as GitHub Copilot, which uses `.github/copilot-instructions.md`) do not appear in the left panel — they are always included via the locked panel. If such an agent was previously configured via `mdm rules link`, it is preserved in `configuredAgents` even though it is not shown as a selectable option.
+
 **Project scope** (default): skills are installed under `.agents/skills/` in the current directory. Each agent that has its own skills directory gets a symlink pointing to the shared location.
 
 **Global scope** (`-g`): skills are installed under `~/.agents/skills/`. Agents with a global skills directory get a symlink to that shared location.
