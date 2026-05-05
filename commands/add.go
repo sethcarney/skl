@@ -756,7 +756,7 @@ func validateNamedAgents(names []string) ([]string, bool) {
 
 func buildInstalledNonUniversal(detected []string) []string {
 	var result []string
-	for _, a := range agent.GetNonUniversalAgents() {
+	for _, a := range agent.GetUniqueSkillsDirAgents() {
 		for _, d := range detected {
 			if d == a {
 				result = append(result, a)
@@ -777,7 +777,7 @@ func buildNonUniversalOptions(installedNonUniversal []string, global bool) []ui.
 		options = append(options, ui.UIOption{Label: cfg.DisplayName, Value: a})
 	}
 	for name, cfg := range agent.AllAgents {
-		if agent.IsUniversalAgent(name) || (global && cfg.GlobalSkillsDir == "") {
+		if agent.UsesSharedSkillsDir(name) || (global && cfg.GlobalSkillsDir == "") {
 			continue
 		}
 		alreadyIn := false
@@ -796,7 +796,7 @@ func buildNonUniversalOptions(installedNonUniversal []string, global bool) []ui.
 
 func buildLockedAgentOptions(global bool) []ui.UIOption {
 	var lockedOptions []ui.UIOption
-	for _, a := range agent.GetUniversalAgents() {
+	for _, a := range agent.GetSharedSkillsDirAgents() {
 		cfg := agent.AllAgents[a]
 		if cfg == nil || (global && cfg.GlobalSkillsDir == "") {
 			continue
@@ -830,6 +830,28 @@ func computeAgentInitSel(options []ui.UIOption, installedNonUniversal []string, 
 	return initSel
 }
 
+// promptAgentsYes resolves the agent list when --yes is set, using configured
+// agents when available and falling back to detected agents.
+func promptAgentsYes(configured []string, lockedOptions, options []ui.UIOption, detected []string) []string {
+	if len(configured) > 0 {
+		// configuredAgents only holds non-universal agents; always expand
+		// with the locked universal agents for the actual installation.
+		added := make(map[string]bool)
+		var result []string
+		for _, lo := range lockedOptions {
+			result = append(result, lo.Value)
+			added[lo.Value] = true
+		}
+		for _, c := range configured {
+			if !added[c] {
+				result = append(result, c)
+			}
+		}
+		return result
+	}
+	return yesAgents(options, lockedOptions, detected)
+}
+
 func yesAgents(options []ui.UIOption, lockedOptions []ui.UIOption, detected []string) []string {
 	var result []string
 	for _, lo := range lockedOptions {
@@ -861,8 +883,12 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	options := buildNonUniversalOptions(installedNonUniversal, global)
 	lockedOptions := buildLockedAgentOptions(global)
 
+	// If the user has a configured agent list for this scope, use it as the
+	// default — for both --yes and the interactive picker.
+	configured := lock.GetConfiguredAgents(global, cwd)
+
 	if opts.Yes {
-		return yesAgents(options, lockedOptions, detected), true
+		return promptAgentsYes(configured, lockedOptions, options, detected), true
 	}
 
 	if len(options) == 0 && len(lockedOptions) == 0 {
@@ -877,20 +903,37 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 		return result, true
 	}
 
-	initSel := computeAgentInitSel(options, installedNonUniversal, lock.GetLastSelectedAgents())
+	initSel := computeAgentInitSel(options, installedNonUniversal, configured)
 	selectedIndices, ok := ui.UiSearchMultiselect("Which agents would you like to install to?", options, lockedOptions, initSel)
 	if !ok {
 		return nil, false
 	}
 
 	var result []string
+	var userSelected []string
 	for _, lo := range lockedOptions {
 		result = append(result, lo.Value)
 	}
 	for _, i := range selectedIndices {
 		result = append(result, options[i].Value)
+		userSelected = append(userSelected, options[i].Value)
 	}
-	_ = lock.SaveSelectedAgents(result)
+	// Preserve any previously configured agents that weren't shown in the
+	// picker (e.g. github-copilot: uses .agents/skills so it's in the locked
+	// panel, but has a unique instructions file so it was explicitly configured
+	// via rules link). Merge them into the saved list so they aren't wiped.
+	pickerValues := make(map[string]bool)
+	for _, opt := range options {
+		pickerValues[opt.Value] = true
+	}
+	for _, c := range configured {
+		if !pickerValues[c] {
+			userSelected = append(userSelected, c)
+		}
+	}
+	// Only save the user's explicit non-universal selections. Universal agents
+	// (.agents/skills) are always supported — no need to track them.
+	_ = lock.SetConfiguredAgents(userSelected, global, cwd)
 	return result, true
 }
 

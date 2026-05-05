@@ -1,4 +1,4 @@
-.PHONY: build test clean install icon syso
+.PHONY: build test clean install fmt icon syso ci
 
 build:
 	go build -o mdm .
@@ -6,11 +6,19 @@ build:
 test:
 	go test -v ./...
 
+ci: fmt
+	go test ./...
+	go install golang.org/x/vuln/cmd/govulncheck@v1.1.4 && govulncheck ./...
+	go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 && gocyclo -over 16 .
+
 clean:
 	rm -f mdm resource_windows.syso
 
 install:
 	go install .
+
+fmt:
+	gofmt -s -w .
 
 # Re-render assets/mdm.ico from the SVG shapes in tools/gen-icon/ (pure Go, no external tools).
 # Run this after changing assets/mdm.svg, then commit the updated ICO.
