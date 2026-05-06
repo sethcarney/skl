@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -85,10 +86,45 @@ func isGitSourceType(st string) bool {
 		st == string(source.SourceTypeGit)
 }
 
+func checkLocalSkillVersionUpToDate(sName, srcPath, storedVersion, cwd string) (bool, error) {
+	if storedVersion == "" {
+		return false, fmt.Errorf("no version recorded; re-add the skill to enable version tracking")
+	}
+	if !filepath.IsAbs(srcPath) {
+		srcPath = filepath.Join(cwd, srcPath)
+	}
+	skills := discoverSkillsInDir(srcPath, true, sName)
+	if len(skills) == 0 {
+		return false, fmt.Errorf("skill not found at source path %s", srcPath)
+	}
+	if skills[0].Version == "" {
+		return false, fmt.Errorf("source SKILL.md has no version field; add one to enable version tracking")
+	}
+	return skills[0].Version == storedVersion, nil
+}
+
 func updateGlobalSkills(skillFilter []string, stats *updateStats) {
+	cwd, _ := os.Getwd()
 	l := lock.ReadSkillLock()
 	for sName, entry := range l.Skills {
 		if !matchesFilter(sName, entry.PluginName, skillFilter) {
+			continue
+		}
+		if entry.SourceType == string(source.SourceTypeLocal) {
+			fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+			isUpToDate, err := checkLocalSkillVersionUpToDate(sName, entry.Source, entry.SkillVersion, cwd)
+			if err != nil {
+				ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
+				stats.skipped++
+				continue
+			}
+			if isUpToDate {
+				ui.LogInfo(sName + " is up to date")
+				stats.skipped++
+				continue
+			}
+			runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}})
+			stats.updated++
 			continue
 		}
 		if !isGitSourceType(entry.SourceType) {
@@ -128,6 +164,27 @@ func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
 	localLock := lock.ReadLocalLock(cwd)
 	for sName, entry := range localLock.Skills {
 		if !matchesFilter(sName, "", skillFilter) {
+			continue
+		}
+		if entry.SourceType == string(source.SourceTypeLocal) {
+			fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+			isUpToDate, err := checkLocalSkillVersionUpToDate(sName, entry.Source, entry.SkillVersion, cwd)
+			if err != nil {
+				ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
+				stats.skipped++
+				continue
+			}
+			if isUpToDate {
+				ui.LogInfo(sName + " is up to date")
+				stats.skipped++
+				continue
+			}
+			src := entry.Source
+			if entry.Ref != "" && !strings.Contains(src, "#") {
+				src = src + "#" + entry.Ref
+			}
+			runAdd(src, AddOptions{Project: true, Yes: true, Skills: []string{sName}})
+			stats.updated++
 			continue
 		}
 		if !isGitSourceType(entry.SourceType) {

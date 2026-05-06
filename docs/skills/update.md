@@ -8,20 +8,21 @@ Update installed skills to their latest versions.
 mdm skills update [skills...]
 ```
 
-Re-fetches each skill from its recorded source and ref in the lock file. Skills that are already up to date are skipped. Local skills (installed from a path rather than a git remote) are always skipped.
+Re-fetches each skill from its recorded source and ref in the lock file. Skills that are already up to date are skipped.
 
 Alias: `check`
 
 ## Up-to-date detection
 
-mdm uses two methods to check whether a skill needs updating, in order:
-
-| Method | When used |
+| Source | Method |
 |---|---|
-| Skill folder hash | GitHub skills with a recorded `skillFolderHash` — only counts a change if the skill's own directory changed, not the rest of the repo |
-| Commit SHA | All other git sources — compares the current remote HEAD (or ref) against the stored commit SHA |
+| GitHub | Skill folder hash — only triggers when the skill's own directory changed, not the rest of the repo. Falls back to commit SHA on API error. |
+| GitLab / other git | Commit SHA via `git ls-remote` — no clone needed |
+| Local path | `version` field in `SKILL.md` — bump it to trigger an update |
 
-If neither hash is recorded (e.g. an older install), the skill is always re-fetched to populate the hashes going forward.
+Remote skills use commit-based detection because it's automatic — every push is detectable without any author action. Local skills have no remote to query, so version comparison is used instead: mdm reads the `version` field from the source `SKILL.md` and compares it to the value recorded at install time. If no version is present in either the source or the lock entry, the skill is skipped with a warning.
+
+If no hash is recorded for a remote skill (older install), it is re-fetched once to populate tracking data.
 
 ## Scope
 
