@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
@@ -115,6 +116,24 @@ func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opt
 
 func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) {
 	sName := sanitizeName(sk.Name)
+
+	// Resolve the skill's original source path (if local) so we can guard it
+	// from deletion in the edge case where it coincides with the canonical dir.
+	localSourceAbs := ""
+	if global {
+		if e, ok := lock.ReadSkillLock().Skills[sName]; ok && e.SourceType == string(source.SourceTypeLocal) {
+			localSourceAbs, _ = filepath.Abs(e.Source)
+		}
+	} else {
+		if le, ok := lock.ReadLocalLock(cwd).Skills[sName]; ok && le.SourceType == string(source.SourceTypeLocal) {
+			src := le.Source
+			if !filepath.IsAbs(src) {
+				src = filepath.Clean(filepath.Join(cwd, src))
+			}
+			localSourceAbs = src
+		}
+	}
+
 	for _, agentName := range agentsToRemove {
 		agentBase := getAgentBaseDir(agentName, global, cwd)
 		if agentBase == "" {
@@ -122,6 +141,11 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 		}
 		for _, name := range []string{sName, filepath.Base(sk.Path)} {
 			agentSkillDir := filepath.Join(agentBase, name)
+			agentSkillAbs, _ := filepath.Abs(agentSkillDir)
+			// Never touch a path that is inside (or equal to) the local source tree.
+			if localSourceAbs != "" && isInsideOrEqual(agentSkillAbs, localSourceAbs) {
+				continue
+			}
 			if !isPathSafe(agentBase, agentSkillDir) {
 				continue
 			}
@@ -134,10 +158,15 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 			}
 		}
 	}
+
 	canonicalDir := getCanonicalPath(sk.Name, global)
-	if canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
+	canonicalAbs, _ := filepath.Abs(canonicalDir)
+	// Never delete a directory that is inside or equal to the local source tree.
+	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
+	if !skipCanonical && canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
 		os.RemoveAll(canonicalDir)
 	}
+
 	if global {
 		_ = lock.RemoveSkillFromLock(sName)
 	} else {
