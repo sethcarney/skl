@@ -24,7 +24,10 @@ type AgentConfig struct {
 	DisplayName     string
 	SkillsDir       string // relative, project-level skills directory path
 	GlobalSkillsDir string // absolute, user-level path (empty = global not supported)
-	AlwaysIncluded  bool   // show as locked/always-included in the agent picker
+	// ExcludeFromPicker, when true, hides this agent from the locked section of
+	// the agent picker in `mdm skills add`. Only a small handful of shared-dir
+	// agents (replit, universal) are excluded; all others are shown by default.
+	ExcludeFromPicker bool
 
 	// InstructionsFile is the project-root path to this agent's instruction
 	// file (e.g. "CLAUDE.md", ".cursorrules"). Empty means no instruction file.
@@ -107,7 +110,6 @@ func init() {
 			DisplayName:        "Amp",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(configHome, "agents/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   "AMP.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
@@ -118,7 +120,6 @@ func init() {
 			DisplayName:        "Cline",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".agents/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   ".clinerules",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
@@ -129,7 +130,6 @@ func init() {
 			DisplayName:        "Cursor",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".cursor/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   ".cursorrules",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
@@ -140,7 +140,6 @@ func init() {
 			DisplayName:        "Gemini CLI",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".gemini/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   "GEMINI.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
@@ -151,7 +150,6 @@ func init() {
 			DisplayName:        "GitHub Copilot",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".copilot/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   ".github/copilot-instructions.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
@@ -170,7 +168,6 @@ func init() {
 			DisplayName:        "Antigravity",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".gemini/antigravity/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".gemini/antigravity")) },
@@ -180,7 +177,6 @@ func init() {
 			DisplayName:        "Codex",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(codexHome, "skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   "AGENTS.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
@@ -191,7 +187,6 @@ func init() {
 			DisplayName:        "Deep Agents",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".deepagents/agent/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".deepagents")) },
@@ -201,7 +196,6 @@ func init() {
 			DisplayName:        "Firebender",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".firebender/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".firebender")) },
@@ -211,7 +205,6 @@ func init() {
 			DisplayName:        "Kimi Code CLI",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".config/agents/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".kimi")) },
@@ -221,7 +214,6 @@ func init() {
 			DisplayName:        "OpenCode",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(configHome, "opencode/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   "AGENTS.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
@@ -232,7 +224,7 @@ func init() {
 			DisplayName:        "Replit",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(configHome, "agents/skills"),
-			AlwaysIncluded:     false,
+			ExcludeFromPicker:  true,
 			InstructionsFile:   "AGENTS.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
@@ -246,7 +238,7 @@ func init() {
 			DisplayName:        "Universal",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(configHome, "agents/skills"),
-			AlwaysIncluded:     false,
+			ExcludeFromPicker:  true,
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return false },
@@ -256,7 +248,6 @@ func init() {
 			DisplayName:        "Warp",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".agents/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".warp")) },
@@ -273,7 +264,6 @@ func init() {
 			DisplayName:        "Claude Code",
 			SkillsDir:          ".claude/skills",
 			GlobalSkillsDir:    filepath.Join(claudeHome, "skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   "CLAUDE.md",
 			SharedSkillsDir:    false,
 			NativeInstructions: false,
@@ -284,7 +274,6 @@ func init() {
 			DisplayName:        "Roo Code",
 			SkillsDir:          ".roo/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".roo/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   ".roorules",
 			SharedSkillsDir:    false,
 			NativeInstructions: false,
@@ -295,7 +284,6 @@ func init() {
 			DisplayName:        "Windsurf",
 			SkillsDir:          ".windsurf/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".codeium/windsurf/skills"),
-			AlwaysIncluded:     true,
 			InstructionsFile:   ".windsurfrules",
 			SharedSkillsDir:    false,
 			NativeInstructions: false,
@@ -314,7 +302,6 @@ func init() {
 			DisplayName:        "AdaL",
 			SkillsDir:          ".adal/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".adal/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".adal")) },
@@ -324,7 +311,6 @@ func init() {
 			DisplayName:        "Augment",
 			SkillsDir:          ".augment/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".augment/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".augment")) },
@@ -334,7 +320,6 @@ func init() {
 			DisplayName:        "IBM Bob",
 			SkillsDir:          ".bob/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".bob/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".bob")) },
@@ -344,7 +329,6 @@ func init() {
 			DisplayName:        "CodeBuddy",
 			SkillsDir:          ".codebuddy/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".codebuddy/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled: func() bool {
@@ -357,7 +341,6 @@ func init() {
 			DisplayName:        "Command Code",
 			SkillsDir:          ".commandcode/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".commandcode/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".commandcode")) },
@@ -367,7 +350,6 @@ func init() {
 			DisplayName:        "Continue",
 			SkillsDir:          ".continue/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".continue/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled: func() bool {
@@ -380,7 +362,6 @@ func init() {
 			DisplayName:        "Cortex Code",
 			SkillsDir:          ".cortex/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".snowflake/cortex/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".snowflake/cortex")) },
@@ -390,7 +371,6 @@ func init() {
 			DisplayName:        "Crush",
 			SkillsDir:          ".crush/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".config/crush/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".config/crush")) },
@@ -400,7 +380,6 @@ func init() {
 			DisplayName:        "Droid",
 			SkillsDir:          ".factory/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".factory/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".factory")) },
@@ -410,7 +389,6 @@ func init() {
 			DisplayName:        "Goose",
 			SkillsDir:          ".goose/skills",
 			GlobalSkillsDir:    filepath.Join(configHome, "goose/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(configHome, "goose")) },
@@ -420,7 +398,6 @@ func init() {
 			DisplayName:        "iFlow CLI",
 			SkillsDir:          ".iflow/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".iflow/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".iflow")) },
@@ -430,7 +407,6 @@ func init() {
 			DisplayName:        "Junie",
 			SkillsDir:          ".junie/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".junie/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".junie")) },
@@ -440,7 +416,6 @@ func init() {
 			DisplayName:        "Kilo Code",
 			SkillsDir:          ".kilocode/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".kilocode/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".kilocode")) },
@@ -450,7 +425,6 @@ func init() {
 			DisplayName:        "Kiro CLI",
 			SkillsDir:          ".kiro/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".kiro/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".kiro")) },
@@ -460,7 +434,6 @@ func init() {
 			DisplayName:        "Kode",
 			SkillsDir:          ".kode/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".kode/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".kode")) },
@@ -470,7 +443,6 @@ func init() {
 			DisplayName:        "MCPJam",
 			SkillsDir:          ".mcpjam/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".mcpjam/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".mcpjam")) },
@@ -480,7 +452,6 @@ func init() {
 			DisplayName:        "Mistral Vibe",
 			SkillsDir:          ".vibe/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".vibe/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".vibe")) },
@@ -490,7 +461,6 @@ func init() {
 			DisplayName:        "Mux",
 			SkillsDir:          ".mux/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".mux/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".mux")) },
@@ -500,7 +470,6 @@ func init() {
 			DisplayName:        "Neovate",
 			SkillsDir:          ".neovate/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".neovate/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".neovate")) },
@@ -510,7 +479,6 @@ func init() {
 			DisplayName:        "OpenClaw",
 			SkillsDir:          "skills",
 			GlobalSkillsDir:    getOpenClawGlobalSkillsDir(),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled: func() bool {
@@ -524,7 +492,6 @@ func init() {
 			DisplayName:        "OpenHands",
 			SkillsDir:          ".openhands/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".openhands/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".openhands")) },
@@ -534,7 +501,6 @@ func init() {
 			DisplayName:        "Pi",
 			SkillsDir:          ".pi/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".pi/agent/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".pi/agent")) },
@@ -544,7 +510,6 @@ func init() {
 			DisplayName:        "Pochi",
 			SkillsDir:          ".pochi/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".pochi/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".pochi")) },
@@ -554,7 +519,6 @@ func init() {
 			DisplayName:        "Qoder",
 			SkillsDir:          ".qoder/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".qoder/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".qoder")) },
@@ -564,7 +528,6 @@ func init() {
 			DisplayName:        "Qwen Code",
 			SkillsDir:          ".qwen/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".qwen/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".qwen")) },
@@ -574,7 +537,6 @@ func init() {
 			DisplayName:        "Trae",
 			SkillsDir:          ".trae/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".trae/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".trae")) },
@@ -584,7 +546,6 @@ func init() {
 			DisplayName:        "Trae CN",
 			SkillsDir:          ".trae/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".trae-cn/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".trae-cn")) },
@@ -594,7 +555,6 @@ func init() {
 			DisplayName:        "Zencoder",
 			SkillsDir:          ".zencoder/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".zencoder/skills"),
-			AlwaysIncluded:     true,
 			SharedSkillsDir:    false,
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".zencoder")) },
@@ -639,12 +599,6 @@ func UsesSharedSkillsDir(name string) bool {
 	return ok && a.SharedSkillsDir
 }
 
-// UsesAgentsMD reports whether the agent reads instructions from AGENTS.md.
-func UsesAgentsMD(name string) bool {
-	a, ok := AllAgents[name]
-	return ok && a.InstructionsFile == "AGENTS.md"
-}
-
 // NeedsNoTracking reports whether an agent requires no entry in configuredAgents.
 // True when both skills and instructions are auto-covered
 // (SharedSkillsDir && NativeInstructions).
@@ -654,11 +608,11 @@ func NeedsNoTracking(name string) bool {
 }
 
 // GetSharedSkillsDirAgents returns agents that use .agents/skills and are
-// marked AlwaysIncluded (i.e. shown as locked in the agent picker).
+// shown in the locked section of the agent picker (ExcludeFromPicker == false).
 func GetSharedSkillsDirAgents() []string {
 	var result []string
 	for name, a := range AllAgents {
-		if a.SharedSkillsDir && a.AlwaysIncluded {
+		if a.SharedSkillsDir && !a.ExcludeFromPicker {
 			result = append(result, name)
 		}
 	}
