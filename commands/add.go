@@ -272,6 +272,11 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		return
 	}
 
+	// Pre-tick skills already installed from this source in the interactive picker.
+	if len(opts.Skills) == 0 {
+		opts.PreselectedSkills = mergeUnique(opts.PreselectedSkills, alreadyInstalledFromSource(parsed.URL, cwd))
+	}
+
 	selectedSkills, ok := selectSkills(skills, opts)
 	if !ok {
 		return
@@ -592,8 +597,12 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 		if global {
 			_ = lock.AddSkillToLock(sName, lockEntry)
 		} else {
+			localSrc := baseLockEntry.Source
+			if baseLockEntry.SourceType == string(source.SourceTypeLocal) {
+				localSrc = toRelSourcePath(localSrc, cwd)
+			}
 			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
-				Source:     baseLockEntry.Source,
+				Source:     localSrc,
 				Ref:        baseLockEntry.Ref,
 				SourceType: baseLockEntry.SourceType,
 			}, cwd)
@@ -602,6 +611,22 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 
 	fmt.Println()
 	printInstallSummary(len(skills), global, agents, mode)
+}
+
+// toRelSourcePath converts an absolute local path to a path relative to cwd,
+// using forward slashes so the lock file is portable across platforms. Falls
+// back to absPath when relativization is not possible (e.g. different Windows
+// drives).
+func toRelSourcePath(absPath, cwd string) string {
+	rel, err := filepath.Rel(cwd, absPath)
+	if err != nil || filepath.IsAbs(rel) {
+		return absPath
+	}
+	rel = filepath.ToSlash(rel)
+	if rel != "." && !strings.HasPrefix(rel, "..") {
+		rel = "./" + rel
+	}
+	return rel
 }
 
 // ─── Skill discovery ───────────────────────────────────────────────────────────
