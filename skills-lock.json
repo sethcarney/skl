@@ -1,11 +1,6 @@
 {
   "version": 1,
-  "skills": {
-    "hidden-test-skill": {
-      "source": "./tests/testdata/hidden-skill",
-      "sourceType": "local"
-    }
-  },
+  "skills": {},
   "configuredAgents": [
     "claude-code",
     "github-copilot"

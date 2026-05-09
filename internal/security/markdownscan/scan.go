@@ -117,7 +117,7 @@ func ScanMarkdownText(path, content string) []Finding {
 		}
 
 		if isUnicodeTag(r) {
-			findings = append(findings, scanTagSequence(path, content, &pos, r, size))
+			findings = append(findings, scanTagSequence(path, content, &pos, r))
 			continue
 		}
 
@@ -165,8 +165,8 @@ func advanceNewline(pos *scanPosition, r rune, size int) bool {
 	}
 }
 
-func scanTagSequence(path, content string, pos *scanPosition, firstRune rune, firstSize int) Finding {
-	startOffset, startLine, startColumn := pos.offset, pos.line, pos.column
+func scanTagSequence(path, content string, pos *scanPosition, firstRune rune) Finding {
+	startLine, startColumn := pos.line, pos.column
 	decoded := strings.Builder{}
 	for pos.offset < len(content) {
 		next, nextSize := utf8.DecodeRuneInString(content[pos.offset:])
@@ -181,9 +181,6 @@ func scanTagSequence(path, content string, pos *scanPosition, firstRune rune, fi
 	detail := "Unicode tag characters can hide ASCII instructions"
 	if decoded.Len() > 0 {
 		detail = fmt.Sprintf("decoded tag text: %q", truncate(decoded.String(), 80))
-	}
-	if pos.offset == startOffset {
-		advanceColumn(pos, firstSize)
 	}
 	return newFinding(path, startLine, startColumn, firstRune, CategoryUnicodeTag, detail)
 }
