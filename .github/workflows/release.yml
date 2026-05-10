@@ -83,7 +83,6 @@ jobs:
             cosign sign-blob --yes "$f" \
               --output-signature "${f}.sig" \
               --output-certificate "${f}.pem"
-            sleep 5
           done
 
       - name: Create GitHub Release
