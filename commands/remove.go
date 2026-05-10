@@ -186,46 +186,76 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 	return lock.RemoveSkillFromLocalLock(sName, cwd)
 }
 
+func resolveRemoveScope(opts RemoveOptions) (global bool, ok bool) {
+	if opts.Global {
+		return true, true
+	}
+	if opts.Yes {
+		return false, true
+	}
+	idx, ok := ui.UiSelect("Which scope?", []ui.UIOption{
+		{Label: "Project", Hint: "remove from this project"},
+		{Label: "Global", Hint: "remove from your user account"},
+	})
+	if !ok {
+		return false, false
+	}
+	return idx == 1, true
+}
+
+func handleNoInstalled(global bool, cwd string) {
+	var cleaned int
+	var lockErr error
+	if global {
+		cleaned, lockErr = cleanOrphanedLockEntries(cwd)
+	} else {
+		cleaned, lockErr = cleanOrphanedLocalLockEntries(cwd)
+	}
+	if lockErr != nil {
+		ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
+		fmt.Println()
+	}
+	if cleaned > 0 {
+		fmt.Printf("%sCleaned up %d orphaned lock entr%s with no files on disk.%s\n",
+			ansiDim, cleaned, map[bool]string{true: "ies", false: "y"}[cleaned != 1], ansiReset)
+		return
+	}
+	fmt.Printf("%sNo skills installed.%s\n", ansiDim, ansiReset)
+}
+
+func executeRemovals(toRemove []*InstalledSkill, agentFilter []string, global bool, cwd string) error {
+	var lockErr error
+	for _, sk := range toRemove {
+		agentsToRemove := sk.Agents
+		if len(agentFilter) > 0 {
+			agentsToRemove = agentFilter
+		}
+		if err := removeSkillFromDisk(sk, agentsToRemove, global, cwd); err != nil && lockErr == nil {
+			lockErr = err
+		}
+	}
+	if !global && lockErr == nil {
+		if _, err := cleanOrphanedLocalLockEntries(cwd); err != nil {
+			lockErr = err
+		}
+	}
+	return lockErr
+}
+
 func runRemove(positional []string, opts RemoveOptions) {
 	cwd, _ := os.Getwd()
-	global := opts.Global
 
-	skillFilter := opts.Skills
-	if len(positional) > 0 {
-		skillFilter = append(skillFilter, positional...)
-	}
+	skillFilter := append(opts.Skills, positional...)
 
-	if !opts.Global && !opts.Yes {
-		idx, ok := ui.UiSelect("Which scope?", []ui.UIOption{
-			{Label: "Project", Hint: "remove from this project"},
-			{Label: "Global", Hint: "remove from your user account"},
-		})
-		if !ok {
-			return
-		}
-		global = idx == 1
+	global, ok := resolveRemoveScope(opts)
+	if !ok {
+		return
 	}
 
 	scopeGlobal := &global
 	installed, err := listInstalledSkills(scopeGlobal, opts.Agents)
 	if err != nil || len(installed) == 0 {
-		var cleaned int
-		var lockErr error
-		if global {
-			cleaned, lockErr = cleanOrphanedLockEntries(cwd)
-		} else {
-			cleaned, lockErr = cleanOrphanedLocalLockEntries(cwd)
-		}
-		if lockErr != nil {
-			ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
-			fmt.Println()
-		}
-		if cleaned > 0 {
-			fmt.Printf("%sCleaned up %d orphaned lock entr%s with no files on disk.%s\n",
-				ansiDim, cleaned, map[bool]string{true: "ies", false: "y"}[cleaned != 1], ansiReset)
-			return
-		}
-		fmt.Printf("%sNo skills installed.%s\n", ansiDim, ansiReset)
+		handleNoInstalled(global, cwd)
 		return
 	}
 
@@ -239,21 +269,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 	}
 
 	fmt.Println()
-	var lockErr error
-	for _, sk := range toRemove {
-		agentsToRemove := sk.Agents
-		if len(opts.Agents) > 0 {
-			agentsToRemove = opts.Agents
-		}
-		if err := removeSkillFromDisk(sk, agentsToRemove, global, cwd); err != nil && lockErr == nil {
-			lockErr = err
-		}
-	}
-	if !global && lockErr == nil {
-		if _, err := cleanOrphanedLocalLockEntries(cwd); err != nil {
-			lockErr = err
-		}
-	}
+	lockErr := executeRemovals(toRemove, opts.Agents, global, cwd)
 	fmt.Println()
 	if lockErr != nil {
 		ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
