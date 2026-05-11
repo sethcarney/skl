@@ -404,6 +404,7 @@ type InstalledSkill struct {
 	Description   string
 	License       string `json:"license,omitempty"`
 	Compatibility string `json:"compatibility,omitempty"`
+	Ref           string `json:"ref,omitempty"`
 	Path          string
 	CanonicalPath string
 	Scope         string // "project" or "global"
@@ -642,6 +643,19 @@ func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill,
 	skillsMap := map[string]*InstalledSkill{}
 	for _, scope := range scopes {
 		populateScopeSkills(scope, agentsToCheck, cwd, skillsMap)
+	}
+
+	globalLock := lock.ReadSkillLock()
+	localLock := lock.ReadLocalLock(cwd)
+	for _, s := range skillsMap {
+		if s.Ref != "" {
+			continue
+		}
+		if entry, ok := globalLock.Skills[s.Name]; ok && entry.Ref != "" {
+			s.Ref = entry.Ref
+		} else if entry, ok := localLock.Skills[s.Name]; ok && entry.Ref != "" {
+			s.Ref = entry.Ref
+		}
 	}
 
 	var result []*InstalledSkill
