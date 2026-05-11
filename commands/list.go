@@ -139,6 +139,9 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 		if s.Compatibility != "" {
 			fmt.Printf("    %scompatibility: %s%s\n", ansiDim, s.Compatibility, ansiReset)
 		}
+		if s.Ref != "" {
+			fmt.Printf("    %sref: %s%s\n", ansiDim, s.Ref, ansiReset)
+		}
 		shortPath := shortenPath(s.Path, cwd)
 		fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
 	}
