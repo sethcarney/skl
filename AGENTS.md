@@ -112,7 +112,7 @@ mdm
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── ui/              # ANSI color constants; Bubbletea spinner
-    └── version/         # Version constant (bump here for releases)
+    └── version/         # App name + dev fallback version (release tags override via ldflags)
 ```
 
 ### Key data flow
