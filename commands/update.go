@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/blob"
+	"github.com/sethcarney/mdm/internal/git"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
@@ -131,43 +131,53 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats) {
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
-		isUpToDate, err := checkSkillUpToDate(sName, entry)
+		isUpToDate, newRef, err := checkSkillUpToDate(entry)
 		if err != nil {
-			ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+			ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
 			stats.skipped++
 			continue
 		}
 		if isUpToDate {
-			ui.LogInfo(sName + " is up to date")
+			ui.LogInfo(fmt.Sprintf("%s is up to date (%s)", sName, entry.Ref))
 			stats.skipped++
 			continue
 		}
-		runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}})
+		src := entry.Source
+		if newRef != "" {
+			fmt.Printf("  %s→ upgrading %s → %s%s\n", ansiDim, entry.Ref, newRef, ansiReset)
+			src = source.AppendFragmentRef(src, newRef, "")
+		}
+		runAdd(src, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}})
 		stats.updated++
 	}
 }
 
-func checkProjectSkillUpToDate(entry lock.LocalSkillLockEntry) (bool, error) {
-	if entry.SkillVersion == "" {
-		return false, fmt.Errorf("no version recorded; re-add the skill to enable version tracking")
+// checkRemoteTagUpToDate fetches all tags from gitURL and compares the current
+// semver tag against the latest stable release. Returns (upToDate, latestTag, err).
+func checkRemoteTagUpToDate(gitURL, currentRef string) (bool, string, error) {
+	if !git.IsSemverTag(currentRef) {
+		return false, "", fmt.Errorf("not pinned to a version tag; use `mdm skills add <source>#<tag>` to pin")
 	}
-	if entry.SourceType != string(source.SourceTypeGitHub) {
-		return false, fmt.Errorf("version checking is only supported for GitHub sources")
+	tags, err := git.FetchRemoteTags(gitURL)
+	if err != nil {
+		return false, "", err
+	}
+	latest := git.LatestSemverTag(tags)
+	if latest == "" {
+		return false, "", fmt.Errorf("no stable version tags found on remote")
+	}
+	if git.CompareSemverTags(latest, currentRef) > 0 {
+		return false, latest, nil
+	}
+	return true, "", nil
+}
+
+func checkProjectSkillUpToDate(entry lock.LocalSkillLockEntry) (bool, string, error) {
+	if !isGitSourceType(entry.SourceType) {
+		return true, "", nil
 	}
 	parsed := source.ParseSource(entry.Source)
-	ownerRepo := source.GetOwnerRepo(parsed)
-	if ownerRepo == "" {
-		return false, fmt.Errorf("could not determine repository from source")
-	}
-	token := lock.GetGitHubToken()
-	remoteVersion, err := blob.FetchSkillVersion(ownerRepo, entry.Ref, entry.SkillPath, token)
-	if err != nil {
-		return false, err
-	}
-	if remoteVersion == "" {
-		return false, fmt.Errorf("source SKILL.md has no version field; add one to enable version tracking")
-	}
-	return remoteVersion == entry.SkillVersion, nil
+	return checkRemoteTagUpToDate(parsed.URL, entry.Ref)
 }
 
 func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
@@ -202,19 +212,22 @@ func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
-		isUpToDate, err := checkProjectSkillUpToDate(entry)
+		isUpToDate, newRef, err := checkProjectSkillUpToDate(entry)
 		if err != nil {
-			ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+			ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
 			stats.skipped++
 			continue
 		}
 		if isUpToDate {
-			ui.LogInfo(sName + " is up to date")
+			ui.LogInfo(fmt.Sprintf("%s is up to date (%s)", sName, entry.Ref))
 			stats.skipped++
 			continue
 		}
 		src := entry.Source
-		if entry.Ref != "" && !strings.Contains(src, "#") {
+		if newRef != "" {
+			fmt.Printf("  %s→ upgrading %s → %s%s\n", ansiDim, entry.Ref, newRef, ansiReset)
+			src = source.AppendFragmentRef(src, newRef, "")
+		} else if entry.Ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + entry.Ref
 		}
 		runAdd(src, AddOptions{Project: true, Yes: true, Skills: []string{sName}})
@@ -244,25 +257,10 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	fmt.Println()
 }
 
-func checkSkillUpToDate(skillName string, entry lock.SkillLockEntry) (bool, error) {
-	if entry.SkillVersion == "" {
-		return false, fmt.Errorf("no version recorded; re-add the skill to enable version tracking")
-	}
-	if entry.SourceType != string(source.SourceTypeGitHub) {
-		return false, fmt.Errorf("version checking is only supported for GitHub sources")
+func checkSkillUpToDate(entry lock.SkillLockEntry) (bool, string, error) {
+	if !isGitSourceType(entry.SourceType) {
+		return true, "", nil
 	}
 	parsed := source.ParseSource(entry.Source)
-	ownerRepo := source.GetOwnerRepo(parsed)
-	if ownerRepo == "" {
-		return false, fmt.Errorf("could not determine repository from source")
-	}
-	token := lock.GetGitHubToken()
-	remoteVersion, err := blob.FetchSkillVersion(ownerRepo, entry.Ref, entry.SkillPath, token)
-	if err != nil {
-		return false, err
-	}
-	if remoteVersion == "" {
-		return false, fmt.Errorf("source SKILL.md has no version field; add one to enable version tracking")
-	}
-	return remoteVersion == entry.SkillVersion, nil
+	return checkRemoteTagUpToDate(parsed.URL, entry.Ref)
 }

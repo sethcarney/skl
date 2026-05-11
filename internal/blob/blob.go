@@ -109,44 +109,6 @@ func FetchRepoTree(ownerRepo string, ref *string, token string) (*RepoTree, erro
 	return nil, fmt.Errorf("could not fetch repo tree for %s", ownerRepo)
 }
 
-// FetchSkillVersion fetches the version field from a SKILL.md file in a GitHub
-// repository. skillPath is the path to the SKILL.md file within the repo (e.g.
-// "skills/my-skill/SKILL.md" or "SKILL.md"). When ref is empty, "main" and
-// "master" are tried in order.
-func FetchSkillVersion(ownerRepo, ref, skillPath, token string) (string, error) {
-	mdPath := skillPath
-	if mdPath == "" {
-		mdPath = "SKILL.md"
-	}
-
-	tryRef := func(branch string) (string, bool) {
-		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
-		defer cancel()
-		body, ok := fetchSkillMDContent(ctx, ownerRepo, branch, mdPath, token)
-		if !ok {
-			return "", false
-		}
-		data, _ := skill.ParseFrontmatter(string(body))
-		ver, _ := data["version"].(string)
-		return ver, true
-	}
-
-	if ref != "" {
-		ver, ok := tryRef(ref)
-		if !ok {
-			return "", fmt.Errorf("could not fetch SKILL.md from %s at ref %s", ownerRepo, ref)
-		}
-		return ver, nil
-	}
-
-	for _, branch := range []string{"main", "master"} {
-		if ver, ok := tryRef(branch); ok {
-			return ver, nil
-		}
-	}
-	return "", fmt.Errorf("could not fetch SKILL.md from %s", ownerRepo)
-}
-
 func ToSkillSlug(name string) string {
 	s := strings.ToLower(name)
 	s = strings.ReplaceAll(s, " ", "-")
