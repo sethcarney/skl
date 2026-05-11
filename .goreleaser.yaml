@@ -70,3 +70,4 @@ release:
     owner: sethcarney
     name: mdm
   draft: false
+  prerelease: auto
