@@ -560,6 +560,37 @@ func (m *searchModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+func (m *searchModel) confirm() (tea.Model, tea.Cmd, bool) {
+	var result []int
+	for i, s := range m.selected {
+		if s {
+			result = append(result, i)
+		}
+	}
+	if m.required && len(result) == 0 {
+		return m, nil, true
+	}
+	m.result = result
+	m.done = true
+	return m, tea.Quit, true
+}
+
+func (m *searchModel) toggleAllFiltered() {
+	if len(m.filtered) == 0 {
+		return
+	}
+	allSelected := true
+	for _, fi := range m.filtered {
+		if !m.selected[fi] {
+			allSelected = false
+			break
+		}
+	}
+	for _, fi := range m.filtered {
+		m.selected[fi] = !allSelected
+	}
+}
+
 func handleSearchModelKey(m *searchModel, msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.Type {
 	case tea.KeyUp:
@@ -574,19 +605,11 @@ func handleSearchModelKey(m *searchModel, msg tea.KeyMsg) (tea.Model, tea.Cmd, b
 			m.clampOffset()
 		}
 		return m, nil, true
+	case tea.KeyTab:
+		m.toggleAllFiltered()
+		return m, nil, true
 	case tea.KeyEnter:
-		var result []int
-		for i, s := range m.selected {
-			if s {
-				result = append(result, i)
-			}
-		}
-		if m.required && len(result) == 0 {
-			return m, nil, true
-		}
-		m.result = result
-		m.done = true
-		return m, tea.Quit, true
+		return m.confirm()
 	case tea.KeyEsc, tea.KeyCtrlC:
 		m.cancelled = true
 		m.done = true
@@ -688,7 +711,7 @@ func (m *searchModel) View() string {
 		return m.viewDone()
 	}
 
-	footer := styleDimmed.Render("type to filter · space to toggle · enter to confirm")
+	footer := styleDimmed.Render("type to filter · space to toggle · tab to toggle all · enter to confirm")
 
 	if len(m.locked) == 0 {
 		header := stylePrompt.Render(m.message) + "\n" + "  " + m.input.View() + "\n"
