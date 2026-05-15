@@ -199,17 +199,26 @@ func runFindSource(sourceInput string, jsonMode bool) {
 	runAdd(sourceInput, AddOptions{PreselectedSkills: names})
 }
 
+func startSpinner(msg string, show bool) *ui.Spinner {
+	if show {
+		return ui.NewSpinner(msg)
+	}
+	return nil
+}
+
+func stopSpinner(s *ui.Spinner) {
+	if s != nil {
+		s.Stop("")
+	}
+}
+
 func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jsonMode bool) ([]RemoteSkillEntry, error) {
+	show := !jsonMode
 	switch parsed.Type {
 	case source.SourceTypeWellKnown:
-		var spin *ui.Spinner
-		if !jsonMode {
-			spin = ui.NewSpinner("Fetching skills...")
-		}
+		spin := startSpinner("Fetching skills...", show)
 		skills, err := registry.FetchAllWellKnownSkills(parsed.URL)
-		if !jsonMode {
-			spin.Stop("")
-		}
+		stopSpinner(spin)
 		if err != nil {
 			return nil, err
 		}
@@ -227,14 +236,9 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jso
 		return entries, nil
 	case source.SourceTypeGitHub:
 		ownerRepo := source.GetOwnerRepo(parsed)
-		var spin *ui.Spinner
-		if !jsonMode {
-			spin = ui.NewSpinner("Fetching skills...")
-		}
+		spin := startSpinner("Fetching skills...", show)
 		metas, err := blob.FetchRemoteSkillList(ownerRepo, parsed.Ref, parsed.Subpath, lock.GetGitHubToken())
-		if !jsonMode {
-			spin.Stop("")
-		}
+		stopSpinner(spin)
 		if err != nil {
 			return nil, err
 		}
@@ -244,14 +248,9 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jso
 		}
 		return entries, nil
 	default:
-		var spin *ui.Spinner
-		if !jsonMode {
-			spin = ui.NewSpinner("Cloning " + parsed.URL + "...")
-		}
+		spin := startSpinner("Cloning "+parsed.URL+"...", show)
 		tmpDir, err := git.CloneRepo(parsed.URL, parsed.Ref)
-		if !jsonMode {
-			spin.Stop("")
-		}
+		stopSpinner(spin)
 		if err != nil {
 			return nil, err
 		}
